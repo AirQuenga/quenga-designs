@@ -28,6 +28,12 @@ export async function importAPNsToDatabase(apns: string[]): Promise<{
       // Enrich the property data
       const enriched = await enrichProperty(apn)
 
+      if (!enriched.data.latitude || !enriched.data.longitude) {
+        failed++
+        errors.push(`${apn}: No coordinates found from GIS lookup`)
+        continue
+      }
+
       // Insert into database
       const { error } = await supabase.from("properties").insert({
         apn: enriched.apn,

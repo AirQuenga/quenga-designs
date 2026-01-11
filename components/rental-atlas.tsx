@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { LeafletMap } from "@/components/map/leaflet-map"
+import { ButteCountyMap } from "@/components/map/butte-county-map"
 import { FilterSidebar } from "@/components/filters/filter-sidebar"
 import { PropertyList } from "@/components/property/property-list"
 import { PropertyDetailPanel } from "@/components/property/property-detail-panel"
@@ -168,7 +168,7 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
         <div className="flex flex-1 overflow-hidden">
           {viewMode === "map" ? (
             <div className="flex-1">
-              <LeafletMap
+              <ButteCountyMap
                 properties={filteredProperties}
                 selectedProperty={selectedProperty}
                 onPropertySelect={setSelectedProperty}
