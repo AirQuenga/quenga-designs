@@ -304,12 +304,12 @@ export function PropertyDetailPanel({ property, onClose }: PropertyDetailPanelPr
                 <h4 className="mb-3 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Legal Information</h4>
                 <div className="rounded-lg bg-muted/40 p-4 space-y-3">
                   <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground font-medium">APN</span>
-                    <span className="font-mono font-bold text-card-foreground">{property.apn || "--"}</span>
+                    <span className="text-muted-foreground font-medium">Assessor's Parcel Number (APN)</span>
+                    <span className="font-medium uppercase tracking-wide">{property.apn || "--"}</span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="text-muted-foreground font-medium">Census Tract</span>
-                    <span className="font-mono font-bold text-card-foreground">{property.census_tract || "--"}</span>
+                    <span className="font-medium uppercase tracking-wide">{property.census_tract || "--"}</span>
                   </div>
                 </div>
               </section>

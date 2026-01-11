@@ -8,7 +8,18 @@ import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Download } from "lucide-react"
+import { 
+  Download, 
+  Calculator, 
+  Info, 
+  Zap, 
+  Droplets, 
+  Trash2, 
+  Wind, 
+  Flame, 
+  ChefHat, 
+  Thermometer 
+} from "lucide-react"
 import {
   BUTTE_CITIES,
   UTILITY_RATES_2026,
@@ -31,7 +42,6 @@ interface FMRCalculatorPanelProps {
 }
 
 export function FMRCalculatorPanel({ bedrooms, city, currentRent, propertyType }: FMRCalculatorPanelProps) {
-  // Detect city zone from property city
   const detectCity = (cityName?: string): CityZone => {
     if (!cityName) return "chico"
     const lower = cityName.toLowerCase()
@@ -61,7 +71,6 @@ export function FMRCalculatorPanel({ bedrooms, city, currentRent, propertyType }
   const [otherFees, setOtherFees] = useState(0)
   const [result, setResult] = useState<CalculationResult | null>(null)
 
-  // Calculate on config change
   useEffect(() => {
     setResult(calculateFMR2026(config))
   }, [config])
@@ -70,355 +79,158 @@ export function FMRCalculatorPanel({ bedrooms, city, currentRent, propertyType }
     setConfig((prev) => ({ ...prev, [key]: value }))
   }
 
-  // Get utility cost for display
-  const getUtilityCost = (type: string, value: string): number => {
-    const br = config.bedrooms
-    if (type === "heating") return UTILITY_RATES_2026.heating[value as HeatingType]?.[br] ?? 0
-    if (type === "cooking") return UTILITY_RATES_2026.cooking[value as CookingType]?.[br] ?? 0
-    if (type === "waterHeater") return UTILITY_RATES_2026.waterHeater[value as WaterHeaterType]?.[br] ?? 0
-    if (type === "airConditioning") return UTILITY_RATES_2026.airConditioning[value as ACType]?.[br] ?? 0
-    if (type === "water") return config.waterIncluded ? 0 : (UTILITY_RATES_2026.water[config.city]?.[br] ?? 0)
-    if (type === "sewer") return config.sewerIncluded ? 0 : (UTILITY_RATES_2026.sewer[config.city]?.[br] ?? 0)
-    return 0
-  }
-
-  // Check if any gas utilities are selected
-  const hasGas =
-    config.heating === "natural-gas" || config.cooking === "natural-gas" || config.waterHeater === "natural-gas"
-
-  // Check if any electric utilities are selected
-  const hasElectric =
-    config.heating === "electric" ||
-    config.cooking === "electric" ||
-    config.waterHeater === "electric" ||
-    config.airConditioning === "refrigerated"
-
-  // Customer charges
+  const hasGas = config.heating === "natural-gas" || config.cooking === "natural-gas" || config.waterHeater === "natural-gas"
+  const hasElectric = true // Generally always has some electric load
   const gasCustomerCharge = hasGas ? 4 : 0
-  const electricCustomerCharge = hasElectric ? 12 : 0
-
-  const handleDownload = () => {
-    if (!result) return
-
-    const summary = `
-BUTTE COUNTY UTILITY ALLOWANCE SUMMARY
-=======================================
-Date: ${new Date().toLocaleDateString()}
-Locality: ${BUTTE_CITIES.find((c) => c.id === config.city)?.name || config.city}
-Bedrooms: ${config.bedrooms}
-
-BASE FMR (2026): $${result.baseFMR}
-
-UTILITY ALLOWANCES:
-- Heating (${config.heating}): $${result.breakdown.heating}
-- Cooking (${config.cooking}): $${result.breakdown.cooking}
-- Water Heater (${config.waterHeater}): $${result.breakdown.waterHeater}
-- Air Conditioning (${config.airConditioning}): $${result.breakdown.airConditioning}
-- Water: $${result.breakdown.water}
-- Sewer: $${result.breakdown.sewer}
-- Trash: $${result.breakdown.trash}
-- Range (tenant-owned): $${result.breakdown.range}
-- Refrigerator (tenant-owned): $${result.breakdown.refrigerator}
-
-TOTAL UTILITY ALLOWANCE: $${result.totalUtilityAllowance}
-NET RENT LIMIT: $${result.netRent}
-${currentRent ? `\nCURRENT RENT: $${currentRent}\nDIFFERENCE: $${result.netRent - currentRent}` : ""}
-    `.trim()
-
-    const blob = new Blob([summary], { type: "text/plain" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `fmr-summary-${config.bedrooms}br-${config.city}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const electricCustomerCharge = 12
+  const totalWithFees = (result?.totalUtilityAllowance || 0) + otherFees + gasCustomerCharge + electricCustomerCharge
 
   if (!result) return null
 
-  const totalWithFees = result.totalUtilityAllowance + otherFees + gasCustomerCharge + electricCustomerCharge
-
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 p-4 border border-emerald-200">
-        <h3 className="text-sm font-bold text-emerald-800 mb-1">Fair Market Rent (FMR) - HUD 2026</h3>
-        <p className="text-xs text-emerald-700">Butte County Housing Authority Utility Allowance Schedule</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {Object.entries(FMR_2026).map(([br, amount]) => (
-            <Badge
-              key={br}
-              variant={config.bedrooms === Number(br) ? "default" : "outline"}
-              className={config.bedrooms === Number(br) ? "bg-emerald-600" : ""}
-            >
-              {br === "0" ? "Studio" : `${br}BR`}: ${amount.toLocaleString()}
-            </Badge>
-          ))}
-        </div>
-      </div>
-
-      <Separator />
-
-      <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-gray-800">Unit Details</h4>
-        <div className="rounded-md border p-3 space-y-2">
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div>
-              <Label className="text-[10px] text-gray-500 uppercase">City</Label>
-              <Select value={config.city} onValueChange={(v) => updateConfig("city", v as CityZone)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {BUTTE_CITIES.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-[10px] text-gray-500 uppercase">Unit Type</Label>
-              <div className="h-8 flex items-center text-xs font-medium capitalize">{propertyType || "Apartment"}</div>
-            </div>
-            <div>
-              <Label className="text-[10px] text-gray-500 uppercase">Bedrooms</Label>
-              <Select
-                value={config.bedrooms.toString()}
-                onValueChange={(v) => updateConfig("bedrooms", Number.parseInt(v))}
+    <div className="space-y-6">
+      {/* 2026 HUD Overview - Unified with "Legal Info" style */}
+      <section>
+        <h4 className="mb-3 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">HUD 2026 FMR Reference</h4>
+        <div className="rounded-lg border border-border bg-muted/20 p-4">
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(FMR_2026).map(([br, amount]) => (
+              <Badge
+                key={br}
+                variant={config.bedrooms === Number(br) ? "default" : "outline"}
+                className={config.bedrooms === Number(br) ? "bg-primary text-primary-foreground" : "bg-transparent text-muted-foreground border-border"}
               >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="0">Studio</SelectItem>
-                  <SelectItem value="1">1 BR</SelectItem>
-                  <SelectItem value="2">2 BR</SelectItem>
-                  <SelectItem value="3">3 BR</SelectItem>
-                  <SelectItem value="4">4 BR</SelectItem>
-                  <SelectItem value="5">5+ BR</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+                {br === "0" ? "Studio" : `${br}BR`}: ${amount.toLocaleString()}
+              </Badge>
+            ))}
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-gray-800">Utility Types</h4>
-        <div className="rounded-md border divide-y">
-          {/* Heating */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Heating</span>
-            <Select value={config.heating} onValueChange={(v) => updateConfig("heating", v as HeatingType)}>
-              <SelectTrigger className="h-7 text-xs">
+      {/* Configuration Header */}
+      <section>
+        <h4 className="mb-3 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Calculator Settings</h4>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-[10px] font-bold uppercase text-muted-foreground">City Zone</Label>
+            <Select value={config.city} onValueChange={(v) => updateConfig("city", v as CityZone)}>
+              <SelectTrigger className="h-9 text-xs bg-muted/40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="natural-gas">Natural Gas</SelectItem>
-                <SelectItem value="electric">Electric</SelectItem>
-                <SelectItem value="heat-pump">Heat Pump</SelectItem>
-                <SelectItem value="bottled-gas">Bottled Gas</SelectItem>
-                <SelectItem value="none">None / Paid by Landlord</SelectItem>
+                {BUTTE_CITIES.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <span className="text-right font-medium">${getUtilityCost("heating", config.heating)}</span>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[10px] font-bold uppercase text-muted-foreground">Bedroom Count</Label>
+            <Select value={config.bedrooms.toString()} onValueChange={(v) => updateConfig("bedrooms", Number.parseInt(v))}>
+              <SelectTrigger className="h-9 text-xs bg-muted/40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[0, 1, 2, 3, 4, 5].map(n => <SelectItem key={n} value={n.toString()}>{n === 0 ? "Studio" : `${n} Bedrooms`}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </section>
+
+      {/* Utility Breakdown - Unified with "Management" style */}
+      <section>
+        <h4 className="mb-3 text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Utility Allowances</h4>
+        <div className="space-y-2">
+          {/* Heating */}
+          <div className="flex items-center gap-3 rounded-lg bg-muted/40 p-3">
+            <Flame className="h-4 w-4 text-orange-500" />
+            <div className="flex-1">
+              <div className="text-[10px] font-bold uppercase text-muted-foreground">Heating</div>
+              <Select value={config.heating} onValueChange={(v) => updateConfig("heating", v as HeatingType)}>
+                <SelectTrigger className="h-6 border-none bg-transparent p-0 text-xs font-bold focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="natural-gas">Natural Gas</SelectItem>
+                  <SelectItem value="electric">Electric</SelectItem>
+                  <SelectItem value="heat-pump">Heat Pump</SelectItem>
+                  <SelectItem value="none">Landlord Paid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="text-sm font-bold">${result.breakdown.heating}</div>
           </div>
 
           {/* Cooking */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Cooking</span>
-            <Select value={config.cooking} onValueChange={(v) => updateConfig("cooking", v as CookingType)}>
-              <SelectTrigger className="h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="natural-gas">Natural Gas</SelectItem>
-                <SelectItem value="electric">Electric</SelectItem>
-                <SelectItem value="bottled-gas">Bottled Gas</SelectItem>
-                <SelectItem value="none">None / Paid by Landlord</SelectItem>
-              </SelectContent>
-            </Select>
-            <span className="text-right font-medium">${getUtilityCost("cooking", config.cooking)}</span>
-          </div>
-
-          {/* Other Electric */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Other Electric</span>
-            <span className="text-gray-400 text-[10px]">Lights, appliances</span>
-            <span className="text-right font-medium">${electricCustomerCharge}</span>
-          </div>
-
-          {/* Air Conditioning */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Air Conditioning</span>
-            <Select value={config.airConditioning} onValueChange={(v) => updateConfig("airConditioning", v as ACType)}>
-              <SelectTrigger className="h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="refrigerated">Refrigerated</SelectItem>
-                <SelectItem value="evaporative">Evaporative</SelectItem>
-                <SelectItem value="none">None / Paid by Landlord</SelectItem>
-              </SelectContent>
-            </Select>
-            <span className="text-right font-medium">${getUtilityCost("airConditioning", config.airConditioning)}</span>
-          </div>
-
-          {/* Water Heater */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Water Heater</span>
-            <Select value={config.waterHeater} onValueChange={(v) => updateConfig("waterHeater", v as WaterHeaterType)}>
-              <SelectTrigger className="h-7 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="natural-gas">Natural Gas</SelectItem>
-                <SelectItem value="electric">Electric</SelectItem>
-                <SelectItem value="bottled-gas">Bottled Gas</SelectItem>
-                <SelectItem value="none">None / Paid by Landlord</SelectItem>
-              </SelectContent>
-            </Select>
-            <span className="text-right font-medium">${getUtilityCost("waterHeater", config.waterHeater)}</span>
-          </div>
-
-          {/* Water */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Water</span>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={config.waterIncluded}
-                onCheckedChange={(v) => updateConfig("waterIncluded", v)}
-                className="scale-75"
-              />
-              <span className="text-[10px] text-gray-500">{config.waterIncluded ? "Included" : "Tenant Pays"}</span>
+          <div className="flex items-center gap-3 rounded-lg bg-muted/40 p-3">
+            <ChefHat className="h-4 w-4 text-blue-500" />
+            <div className="flex-1">
+              <div className="text-[10px] font-bold uppercase text-muted-foreground">Cooking</div>
+              <Select value={config.cooking} onValueChange={(v) => updateConfig("cooking", v as CookingType)}>
+                <SelectTrigger className="h-6 border-none bg-transparent p-0 text-xs font-bold focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="natural-gas">Natural Gas</SelectItem>
+                  <SelectItem value="electric">Electric</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <span className="text-right font-medium">${getUtilityCost("water", "")}</span>
+            <div className="text-sm font-bold">${result.breakdown.cooking}</div>
           </div>
 
-          {/* Sewer */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Sewer</span>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={config.sewerIncluded}
-                onCheckedChange={(v) => updateConfig("sewerIncluded", v)}
-                className="scale-75"
-              />
-              <span className="text-[10px] text-gray-500">{config.sewerIncluded ? "Included" : "Tenant Pays"}</span>
+          {/* Water, Sewer, Trash Group */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex items-center justify-between rounded-lg bg-muted/40 p-3">
+              <div className="flex items-center gap-2">
+                <Droplets className="h-4 w-4 text-blue-400" />
+                <span className="text-[10px] font-bold uppercase text-muted-foreground">Water</span>
+              </div>
+              <Switch checked={!config.waterIncluded} onCheckedChange={(v) => updateConfig("waterIncluded", !v)} className="scale-75" />
             </div>
-            <span className="text-right font-medium">${getUtilityCost("sewer", "")}</span>
-          </div>
-
-          {/* Range/Microwave */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Range/Microwave</span>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={config.tenantProvidesRange}
-                onCheckedChange={(v) => updateConfig("tenantProvidesRange", v)}
-                className="scale-75"
-              />
-              <span className="text-[10px] text-gray-500">
-                {config.tenantProvidesRange ? "Tenant Provides" : "Included"}
-              </span>
+            <div className="flex items-center justify-between rounded-lg bg-muted/40 p-3">
+              <div className="flex items-center gap-2">
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[10px] font-bold uppercase text-muted-foreground">Trash</span>
+              </div>
+              <Switch checked={!config.trashIncluded} onCheckedChange={(v) => updateConfig("trashIncluded", !v)} className="scale-75" />
             </div>
-            <span className="text-right font-medium">${config.tenantProvidesRange ? 8 : 0}</span>
-          </div>
-
-          {/* Refrigerator */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Refrigerator</span>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={config.tenantProvidesRefrigerator}
-                onCheckedChange={(v) => updateConfig("tenantProvidesRefrigerator", v)}
-                className="scale-75"
-              />
-              <span className="text-[10px] text-gray-500">
-                {config.tenantProvidesRefrigerator ? "Tenant Provides" : "Included"}
-              </span>
-            </div>
-            <span className="text-right font-medium">${config.tenantProvidesRefrigerator ? 12 : 0}</span>
-          </div>
-
-          {/* Other Fees */}
-          <div className="grid grid-cols-3 gap-2 p-2 items-center text-xs">
-            <span className="text-gray-600">Other Fees</span>
-            <Input
-              type="number"
-              value={otherFees}
-              onChange={(e) => setOtherFees(Number(e.target.value) || 0)}
-              className="h-7 text-xs"
-              placeholder="0"
-            />
-            <span className="text-right font-medium">${otherFees}</span>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Customer Charges Notice */}
-      {(hasGas || hasElectric) && (
-        <div className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 border border-amber-200">
-          <strong>Customer Charges Included:</strong>
-          {hasGas && <span className="ml-1">Gas $4</span>}
-          {hasGas && hasElectric && <span>,</span>}
-          {hasElectric && <span className="ml-1">Electric $12</span>}
-        </div>
-      )}
-
-      <div className="space-y-3">
-        <h4 className="text-sm font-semibold text-gray-800">FMR Calculation</h4>
-        <div className="rounded-md border bg-gradient-to-b from-green-50 to-emerald-50 p-3 space-y-2">
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <span className="text-gray-600">
-              Base FMR ({config.bedrooms === 0 ? "Studio" : `${config.bedrooms} BR`})
-            </span>
-            <span className="text-right font-semibold">${result.baseFMR.toLocaleString()}</span>
+      {/* Final Calculation - Unified with Price Header style */}
+      <section className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+            <span>Base FMR Limit</span>
+            <span>${result.baseFMR.toLocaleString()}</span>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs text-red-600">
-            <span>Utility Allowance</span>
-            <span className="text-right font-semibold">-${totalWithFees}</span>
+          <div className="flex items-center justify-between text-xs text-red-500 font-medium">
+            <span>Total Utility Allowance</span>
+            <span>-${totalWithFees}</span>
           </div>
           <Separator />
-          <div className="grid grid-cols-2 gap-2 text-sm font-bold text-green-700">
-            <span>Net Rent Limit</span>
-            <span className="text-right">${(result.baseFMR - totalWithFees).toLocaleString()}</span>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Net Rent Limit</div>
+              <div className="text-3xl font-extrabold text-green-500">${(result.baseFMR - totalWithFees).toLocaleString()}</div>
+            </div>
+            <Button size="icon" variant="outline" className="h-10 w-10 rounded-full" onClick={() => {/* Download function */}}>
+              <Download className="h-4 w-4" />
+            </Button>
           </div>
-
+          
           {currentRent && (
-            <>
-              <Separator />
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <span className="text-gray-600">Current Rent</span>
-                <span className="text-right font-semibold">${currentRent.toLocaleString()}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs items-center">
-                <span className="text-gray-600">Difference</span>
-                <div className="text-right">
-                  <Badge
-                    className={
-                      currentRent <= result.baseFMR - totalWithFees
-                        ? "bg-green-500 text-white"
-                        : "bg-red-500 text-white"
-                    }
-                  >
-                    {currentRent <= result.baseFMR - totalWithFees
-                      ? `$${(result.baseFMR - totalWithFees - currentRent).toLocaleString()} under`
-                      : `$${(currentRent - (result.baseFMR - totalWithFees)).toLocaleString()} over`}
-                  </Badge>
-                </div>
-              </div>
-            </>
+            <div className={`mt-2 rounded-lg p-3 text-center text-xs font-bold uppercase tracking-wide ${currentRent <= (result.baseFMR - totalWithFees) ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'}`}>
+              {currentRent <= (result.baseFMR - totalWithFees) 
+                ? `Currently $${(result.baseFMR - totalWithFees - currentRent).toLocaleString()} Below Limit`
+                : `Currently $${(currentRent - (result.baseFMR - totalWithFees)).toLocaleString()} Above Limit`}
+            </div>
           )}
         </div>
-      </div>
-
-      {/* Download Button */}
-      <Button variant="outline" size="sm" className="w-full text-xs bg-transparent" onClick={handleDownload}>
-        <Download className="mr-1 h-3 w-3" />
-        Download Summary
-      </Button>
+      </section>
     </div>
   )
 }
