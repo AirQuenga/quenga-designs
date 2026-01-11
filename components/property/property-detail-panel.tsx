@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Property, PropertyUnit, PropertyPhoto, PropertyFee } from "@/types/property"
 import { AMENITY_CATEGORIES } from "@/config/amenities"
 import { FEE_TYPES } from "@/config/fees"
-import { calculateFMR, FMR_2025, type UtilityConfiguration } from "@/lib/fmr"
+import { FMRCalculatorPanel } from "./fmr-calculator-panel"
 import {
   X,
   Home,
@@ -28,7 +28,6 @@ import {
   Phone,
   Globe,
   Clock,
-  Shield,
   PawPrint,
   Zap,
   Thermometer,
@@ -38,9 +37,9 @@ import {
   Info,
   Calculator,
   ExternalLink,
-  AlertTriangle,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import { type UtilityConfiguration, calculateFMR, FMR_2025 } from "@/utils/property-utils"
 
 interface PropertyDetailPanelProps {
   property: Property
@@ -513,89 +512,12 @@ export function PropertyDetailPanel({ property, onClose }: PropertyDetailPanelPr
               </div>
             </TabsContent>
 
-            {/* FMR Tab */}
-            <TabsContent value="fmr" className="mt-4 space-y-4">
-              {fmrError && (
-                <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  <span className="text-sm text-amber-600">{fmrError}</span>
-                </div>
-              )}
-
-              <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-4">
-                <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-purple-700">
-                  <Shield className="h-4 w-4" />
-                  Fair Market Rent (FMR) - HUD 2025
-                </h4>
-                <p className="mb-4 text-xs text-muted-foreground">
-                  Butte County FMR limits for {property.bedrooms || 1} bedroom unit
-                </p>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Base FMR</span>
-                    <span className="font-semibold">${fmrData.baseFMR.toLocaleString()}</span>
-                  </div>
-
-                  {fmrData.utilityAllowance > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Utility Allowance</span>
-                      <span className="font-semibold text-red-500">-${fmrData.utilityAllowance.toLocaleString()}</span>
-                    </div>
-                  )}
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Max Gross Rent</span>
-                    <span className="text-lg font-bold text-purple-600">${fmrData.adjustedFMR.toLocaleString()}</span>
-                  </div>
-
-                  {property.current_rent && (
-                    <>
-                      <Separator />
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Current Rent</span>
-                        <span className="font-semibold">${property.current_rent.toLocaleString()}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">FMR Comparison</span>
-                        {property.current_rent <= fmrData.adjustedFMR ? (
-                          <Badge className="bg-green-500 text-white">Within FMR</Badge>
-                        ) : (
-                          <Badge className="bg-red-500 text-white">Above FMR</Badge>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Utility Breakdown */}
-              {fmrData.utilityAllowance > 0 && (
-                <div>
-                  <h4 className="mb-3 text-sm font-semibold text-card-foreground">Utility Allowance Breakdown</h4>
-                  <div className="space-y-1 text-sm">
-                    {Object.entries(fmrData.utilityBreakdown)
-                      .filter(([, value]) => value > 0)
-                      .map(([key, value]) => (
-                        <div key={key} className="flex items-center justify-between rounded bg-muted/30 p-2">
-                          <span className="capitalize">{key.replace(/([A-Z])/g, " $1").trim()}</span>
-                          <span className="font-medium">${value}</span>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* No utilities configured message */}
-              {!property.utilities && (
-                <div className="rounded-lg border border-muted bg-muted/30 p-3">
-                  <p className="text-xs text-muted-foreground">
-                    Utility configuration not available. Showing base FMR without utility adjustments.
-                  </p>
-                </div>
-              )}
+            <TabsContent value="fmr" className="mt-4">
+              <FMRCalculatorPanel
+                bedrooms={property.bedrooms || 2}
+                city={property.city}
+                currentRent={property.current_rent}
+              />
             </TabsContent>
 
             {/* Units Tab */}
