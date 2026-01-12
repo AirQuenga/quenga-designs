@@ -17,15 +17,24 @@ export async function importAPNsToDatabase(apns: string[]): Promise<{
 
   for (const apn of apns) {
     try {
-      // Check if APN already exists
-      const { data: existing } = await supabase.from("properties").select("id").eq("apn", apn).single()
+      const { data: existing, error: fetchError } = await supabase
+        .from("properties")
+        .select("id")
+        .eq("apn", apn)
+        .maybeSingle()
+
+      if (fetchError) {
+        errors.push(`${apn}: Database check failed - ${fetchError.message}`)
+        failed++
+        continue
+      }
 
       if (existing) {
         skipped++
         continue
       }
 
-      // Enrich the property data
+      // Enrich property data from GIS
       const enriched = await enrichProperty(apn)
 
       if (!enriched.data.latitude || !enriched.data.longitude) {
@@ -34,14 +43,14 @@ export async function importAPNsToDatabase(apns: string[]): Promise<{
         continue
       }
 
-      // Insert into database
-      const { error } = await supabase.from("properties").insert({
+      // Insert property
+      const { error: insertError } = await supabase.from("properties").insert({
         apn: enriched.apn,
         address: enriched.data.address || `Property ${apn}`,
         city: enriched.data.city || "Unknown",
         zip_code: enriched.data.zipCode || "00000",
-        county: enriched.data.county,
-        state: enriched.data.state,
+        county: enriched.data.county || "Butte",
+        state: enriched.data.state || "CA",
         latitude: enriched.data.latitude,
         longitude: enriched.data.longitude,
         census_tract: enriched.data.censusTract,
@@ -51,15 +60,15 @@ export async function importAPNsToDatabase(apns: string[]): Promise<{
         management_type: "unknown",
       })
 
-      if (error) {
+      if (insertError) {
         failed++
-        errors.push(`${apn}: ${error.message}`)
+        errors.push(`${apn}: Insert failed - ${insertError.message}`)
       } else {
         success++
       }
     } catch (error) {
       failed++
-      errors.push(`${apn}: ${error instanceof Error ? error.message : "Unknown error"}`)
+      errors.push(`${apn}: Unexpected error - ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 

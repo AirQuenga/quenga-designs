@@ -144,7 +144,6 @@ export function FMRCalculatorPanel({
       <section className="space-y-4">
         <h4 className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted-foreground">Monthly Utility Breakdown</h4>
         
-        {/* Core Utilities */}
         <div className="space-y-2">
           {/* Heating */}
           <div className="flex items-center gap-3 rounded-lg bg-muted/40 p-4">

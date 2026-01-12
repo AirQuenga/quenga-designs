@@ -60,18 +60,48 @@ async function queryButteCountyGIS(apn: string): Promise<{
     url.searchParams.set("outSR", "4326") // WGS84 for lat/lng
     url.searchParams.set("f", "json")
 
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
     const response = await fetch(url.toString(), {
       headers: {
         Accept: "application/json",
       },
+      signal: controller.signal,
     })
 
+    clearTimeout(timeoutId)
+
     if (!response.ok) {
-      console.error(`GIS API error: ${response.status}`)
+      console.error(`GIS API HTTP error: ${response.status}`)
       return null
     }
 
-    const data = await response.json()
+    const contentType = response.headers.get("content-type")
+    if (!contentType || !contentType.includes("application/json")) {
+      console.error(`GIS API returned non-JSON response for APN ${apn}`)
+      return null
+    }
+
+    const text = await response.text()
+
+    if (!text || !text.trim().startsWith("{")) {
+      console.error(`GIS API returned invalid response for APN ${apn}`)
+      return null
+    }
+
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch (parseError) {
+      console.error(`GIS API JSON parse error for APN ${apn}:`, parseError)
+      return null
+    }
+
+    if (data.error) {
+      console.error(`GIS API error for APN ${apn}:`, data.error.message)
+      return null
+    }
 
     if (data.features && data.features.length > 0) {
       const feature = data.features[0]
@@ -114,7 +144,14 @@ async function queryButteCountyGIS(apn: string): Promise<{
 
     return null
   } catch (error) {
-    console.error(`Error querying Butte County GIS for APN ${apn}:`, error)
+    if (error instanceof Error && error.name === "AbortError") {
+      console.error(`GIS API timeout for APN ${apn}`)
+    } else {
+      console.error(
+        `Error querying Butte County GIS for APN ${apn}:`,
+        error instanceof Error ? error.message : "Unknown error",
+      )
+    }
     return null
   }
 }

@@ -41,8 +41,6 @@ const CITIES = [
   { name: "Magalia", lat: 39.8118, lng: -121.5783 },
 ]
 
-const GIS_BASEMAP_URL = "https://gisportal.buttecounty.net/arcgis/rest/services/BaseMap/BaseMap/MapServer/tile"
-// Fallback to Esri World Street Map if GIS fails
 const ESRI_BASEMAP_URL = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile"
 
 export function ButteCountyMap({ properties, selectedProperty, onPropertySelect, filters }: ButteCountyMapProps) {
@@ -54,8 +52,6 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
   const [dragStart, setDragStart] = useState({ x: 0, y: 0, lat: 0, lng: 0 })
   const [hoveredProperty, setHoveredProperty] = useState<Property | null>(null)
   const [showLabels, setShowLabels] = useState(true)
-  const [useGIS, setUseGIS] = useState(true)
-  const [tileErrors, setTileErrors] = useState<Set<string>>(new Set())
 
   // Update dimensions on resize
   useEffect(() => {
@@ -95,17 +91,11 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
   )
 
   const handleZoomIn = useCallback(() => {
-    setZoom((z) => {
-      const newZoom = Math.min(18, z + 1)
-      return newZoom
-    })
+    setZoom((z) => Math.min(18, z + 1))
   }, [])
 
   const handleZoomOut = useCallback(() => {
-    setZoom((z) => {
-      const newZoom = Math.max(8, z - 1)
-      return newZoom
-    })
+    setZoom((z) => Math.max(8, z - 1))
   }, [])
 
   // Get tile coordinates for current view
@@ -215,12 +205,6 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
   const resetView = useCallback(() => {
     setZoom(DEFAULT_ZOOM)
     setCenter(DEFAULT_CENTER)
-    setTileErrors(new Set())
-  }, [])
-
-  // Handle tile error - fallback to Esri
-  const handleTileError = useCallback((key: string) => {
-    setTileErrors((prev) => new Set(prev).add(key))
   }, [])
 
   return (
@@ -347,11 +331,7 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
         {getTiles.map((tile) => {
           const pos = getTilePosition(tile.x, tile.y)
           const key = `${tile.z}-${tile.x}-${tile.y}`
-          const hasTileError = tileErrors.has(key)
-          // Use Esri as fallback if GIS tile fails
-          const tileUrl = hasTileError
-            ? `${ESRI_BASEMAP_URL}/${tile.z}/${tile.y}/${tile.x}`
-            : `${GIS_BASEMAP_URL}/${tile.z}/${tile.y}/${tile.x}`
+          const tileUrl = `${ESRI_BASEMAP_URL}/${tile.z}/${tile.y}/${tile.x}`
 
           return (
             <img
@@ -367,10 +347,9 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
                 pointerEvents: "none",
               }}
               draggable={false}
-              onError={() => {
-                if (!hasTileError) {
-                  handleTileError(key)
-                }
+              onError={(e) => {
+                // Hide broken tiles
+                ;(e.target as HTMLImageElement).style.display = "none"
               }}
             />
           )
