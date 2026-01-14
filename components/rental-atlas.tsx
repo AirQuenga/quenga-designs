@@ -8,7 +8,7 @@ import { PropertyDetailPanel } from "@/components/property/property-detail-panel
 import { ErrorBoundary, PropertyDetailFallback } from "@/components/error-boundary"
 import type { Property, PropertyFilters } from "@/types/property"
 import { Button } from "@/components/ui/button"
-import { Map, List, Menu, Download, ExternalLink, Settings } from "lucide-react"
+import { Map, List, Menu, Download, ExternalLink, Settings, Home } from "lucide-react"
 import Link from "next/link"
 
 const EXCEL_FILE_URL = "/comps-sheet.xlsx"
@@ -143,6 +143,13 @@ export function RentalAtlas({ initialProperties }: RentalAtlasProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild className="h-8 bg-transparent">
+            <Link href="/">
+              <Home className="mr-1 h-4 w-4" />
+              Home
+            </Link>
+          </Button>
+
           <Button variant="outline" size="sm" asChild className="h-8 bg-transparent">
             <Link href="/admin/import">
               <Settings className="mr-1 h-4 w-4" />
