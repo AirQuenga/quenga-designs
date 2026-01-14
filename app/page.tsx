@@ -12,9 +12,7 @@ export default function Home() {
       <section className="pt-32 pb-20 px-6">
         <div className="max-w-4xl mx-auto text-center space-y-6">
           <h1 className="text-6xl sm:text-7xl md:text-8xl font-semibold tracking-tight leading-none">
-            Built to make your
-            <br />
-            job easier.
+            Built to make your job easier.
           </h1>
           <p className="text-xl sm:text-2xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
             Powerful tools that make work effortless. Simple, intuitive, and built to scale.
