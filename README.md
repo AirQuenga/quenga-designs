@@ -1,31 +1,38 @@
 # Rental Map
 
-*Automatically synced with your [v0.app](https://v0.app) deployments*
-
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/airquenga-7484s-projects/v0-rental-market-map)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/oKFyDnLggYO)
+[![Deployed by Quenga Designs](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/airquenga-7484s-projects/v0-rental-market-map)
+[![Built by Marcel Quenga](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/oKFyDnLggYO)
 
 ## Overview
 
-This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
+This is a web-based application designed to collect, organize, and visualize rental property listings across Butte County and surrounding areas. It serves as a centralized tool for managing rental data sourced from internal databases, local listings, national platforms, and classified ads.
 
-## Deployment
+This project is custom-built and independently developed by Marcel L. Quenga under Quenga Designs.
 
-Your project is live at:
+## Live Deployment
 
-**[https://vercel.com/airquenga-7484s-projects/v0-rental-market-map](https://vercel.com/airquenga-7484s-projects/v0-rental-market-map)**
-**[https://v0-rental-market-map.vercel.app/](https://v0-rental-market-map.vercel.app/)**
+The application is live and accessible at:
 
-## Build your app
 
-Continue building your app on:
+**[https://quengadesigns.dev/](https://quengadesigns.dev/)**
 
-**[https://v0.app/chat/oKFyDnLggYO](https://v0.app/chat/oKFyDnLggYO)**
+## Features
 
-## How It Works
+- Centralized rental property data
+- Multi-source listing aggregation
+- Admin dashboard for imports and management
+- Scalable architecture for future tools
+- Modern UI with dark/light mode support
 
-1. Create and modify your project using [v0.app](https://v0.app)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+## Development & Maintenance
+
+This repository is actively maintained by Marcel L. Quenga.
+All updates, features, and deployments are managed directly through this codebase.
+
+## Ownership & Credits
+
+**Project Owner & Developer:** Marcel L. Quenga
+
+**Company:** Quenga Designs
+
+© 2026 Quenga Designs. All rights reserved.
