@@ -28,6 +28,7 @@ import {
   MapPin,
   Search,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react"
 import { importAPNs, getAPNStats, type ImportResult } from "@/app/actions/import-apns"
 import { importAddresses, getAddressStats } from "@/app/actions/import-addresses"
@@ -42,7 +43,8 @@ const SOURCES = [
     category: "database",
     status: "active" as const,
     estimatedListings: 25,
-    description: "Butte County apartment complexes",
+    description: "Butte County apartment complexes - WORKS AUTOMATICALLY",
+    url: null,
   },
   // Local Butte County Sites (8)
   {
@@ -52,6 +54,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 50,
     description: "Local property management",
+    url: "https://www.hignell.com/rentals",
   },
   {
     id: "blueoak",
@@ -60,6 +63,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 30,
     description: "Chico rentals",
+    url: "https://www.blueoakpm.com/rentals",
   },
   {
     id: "sheraton",
@@ -68,6 +72,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 40,
     description: "North state rentals",
+    url: "https://www.sheratonproperties.com",
   },
   {
     id: "fpi",
@@ -76,6 +81,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 35,
     description: "Apartment communities",
+    url: "https://www.fpimgt.com/apartments/california/chico",
   },
   {
     id: "weidner",
@@ -84,6 +90,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 45,
     description: "Apartment living",
+    url: "https://www.weidner.com/apartments/ca/chico",
   },
   {
     id: "chicoforrent",
@@ -92,6 +99,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 60,
     description: "Local rental listings",
+    url: "https://www.chicoforrent.com",
   },
   {
     id: "rentinchico",
@@ -100,6 +108,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 55,
     description: "Chico area rentals",
+    url: "https://www.rentinchico.com",
   },
   {
     id: "eaglepointe",
@@ -108,6 +117,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 20,
     description: "Paradise apartments",
+    url: "https://www.eaglepointeparadise.com",
   },
   // National Rental Sites (26)
   {
@@ -117,6 +127,7 @@ const SOURCES = [
     status: "api-only" as const,
     estimatedListings: 500,
     description: "Real estate marketplace",
+    url: "https://www.zillow.com/chico-ca/rentals/",
   },
   {
     id: "apartments",
@@ -125,6 +136,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 400,
     description: "Apartment search",
+    url: "https://www.apartments.com/chico-ca/",
   },
   {
     id: "realtor",
@@ -133,6 +145,7 @@ const SOURCES = [
     status: "api-only" as const,
     estimatedListings: 350,
     description: "Real estate listings",
+    url: "https://www.realtor.com/apartments/Chico_CA",
   },
   {
     id: "trulia",
@@ -141,6 +154,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 300,
     description: "Home rentals",
+    url: "https://www.trulia.com/for_rent/Chico,CA/",
   },
   {
     id: "hotpads",
@@ -149,6 +163,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 250,
     description: "Map-based search",
+    url: "https://hotpads.com/chico-ca/apartments-for-rent",
   },
   {
     id: "rent",
@@ -157,6 +172,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 200,
     description: "Apartment finder",
+    url: "https://www.rent.com/california/chico-apartments",
   },
   {
     id: "zumper",
@@ -165,6 +181,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 180,
     description: "Rental platform",
+    url: "https://www.zumper.com/apartments-for-rent/chico-ca",
   },
   {
     id: "padmapper",
@@ -173,6 +190,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 150,
     description: "Map search",
+    url: "https://www.padmapper.com/apartments/chico-ca",
   },
   {
     id: "forrent",
@@ -181,6 +199,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 120,
     description: "Rental listings",
+    url: "https://www.forrent.com/find/CA/metro-Chico",
   },
   {
     id: "rentcafe",
@@ -189,6 +208,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 100,
     description: "Apartment search",
+    url: "https://www.rentcafe.com/apartments-for-rent/us/ca/chico/",
   },
   {
     id: "apartmentguide",
@@ -197,6 +217,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 90,
     description: "Apartment finder",
+    url: "https://www.apartmentguide.com/apartments/California/Chico/",
   },
   {
     id: "rentpath",
@@ -205,6 +226,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 80,
     description: "Rental network",
+    url: "https://www.rentpath.com",
   },
   {
     id: "cozy",
@@ -213,6 +235,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 70,
     description: "Rental management",
+    url: "https://cozy.co",
   },
   {
     id: "avail",
@@ -221,6 +244,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 60,
     description: "Landlord tools",
+    url: "https://www.avail.co/rentals",
   },
   {
     id: "turbotenant",
@@ -229,6 +253,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 55,
     description: "Landlord software",
+    url: "https://www.turbotenant.com/rental-listings/california/chico/",
   },
   {
     id: "rentberry",
@@ -237,6 +262,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 50,
     description: "Rental bidding",
+    url: "https://rentberry.com/apartments/s/chico-ca",
   },
   {
     id: "apartmentlist",
@@ -245,6 +271,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 200,
     description: "Personalized search",
+    url: "https://www.apartmentlist.com/ca/chico",
   },
   {
     id: "rentals",
@@ -253,6 +280,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 150,
     description: "Rental marketplace",
+    url: "https://www.rentals.com/california/chico/",
   },
   {
     id: "westsiderentals",
@@ -261,6 +289,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 40,
     description: "CA rentals",
+    url: "https://www.westsiderentals.com/chico-ca",
   },
   {
     id: "abodo",
@@ -269,6 +298,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 100,
     description: "Apartment search",
+    url: "https://www.abodo.com/chico-ca",
   },
   {
     id: "rentjungle",
@@ -277,6 +307,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 80,
     description: "Aggregator",
+    url: "https://www.rentjungle.com/apartments/california/chico/",
   },
   {
     id: "housinglist",
@@ -285,6 +316,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 60,
     description: "Section 8 listings",
+    url: "https://www.housinglist.com/ca/chico",
   },
   {
     id: "gosection8",
@@ -293,6 +325,7 @@ const SOURCES = [
     status: "api-only" as const,
     estimatedListings: 75,
     description: "Section 8 housing",
+    url: "https://www.gosection8.com/Section-8-housing-in-Chico-CA",
   },
   {
     id: "affordablehousing",
@@ -301,6 +334,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 50,
     description: "Low income housing",
+    url: "https://affordablehousingonline.com/housing-search/California/Chico",
   },
   {
     id: "socialserve",
@@ -309,6 +343,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 45,
     description: "Affordable housing",
+    url: "https://www.socialserve.com/tenant/CA/Search.html",
   },
   {
     id: "hud",
@@ -317,6 +352,7 @@ const SOURCES = [
     status: "api-only" as const,
     estimatedListings: 30,
     description: "HUD housing",
+    url: "https://resources.hud.gov/",
   },
   // Classifieds & Marketplaces (15)
   {
@@ -326,6 +362,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 150,
     description: "Local classifieds",
+    url: "https://chico.craigslist.org/search/apa",
   },
   {
     id: "facebook",
@@ -334,6 +371,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 200,
     description: "Social marketplace",
+    url: "https://www.facebook.com/marketplace/chico/propertyrentals",
   },
   {
     id: "fbgroups",
@@ -342,6 +380,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 100,
     description: "Community groups",
+    url: "https://www.facebook.com/groups/search/groups?q=chico%20rentals",
   },
   {
     id: "nextdoor",
@@ -350,6 +389,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 50,
     description: "Neighborhood app",
+    url: "https://nextdoor.com",
   },
   {
     id: "oodle",
@@ -358,6 +398,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 40,
     description: "Classifieds aggregator",
+    url: "https://www.oodle.com/housing/for-rent/chico-ca/",
   },
   {
     id: "geebo",
@@ -366,6 +407,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 30,
     description: "Safe classifieds",
+    url: "https://chico.geebo.com/housing-rent/",
   },
   {
     id: "offerup",
@@ -374,6 +416,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 25,
     description: "Local marketplace",
+    url: "https://offerup.com/explore/l/chico-ca/real-estate/rentals",
   },
   {
     id: "kijiji",
@@ -382,6 +425,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 20,
     description: "Classifieds",
+    url: "https://www.kijiji.ca/b-for-rent/california/chico/k0c30349001l9001",
   },
   {
     id: "recycler",
@@ -390,6 +434,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 15,
     description: "Free classifieds",
+    url: "https://www.recycler.com/chico/rentals",
   },
   {
     id: "locanto",
@@ -398,6 +443,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 20,
     description: "Free ads",
+    url: "https://chico.locanto.com/Apartments-For-Rent/270/",
   },
   {
     id: "pennysaver",
@@ -406,6 +452,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 15,
     description: "Local ads",
+    url: "https://www.pennysaverusa.com/california/chico/real-estate/for-rent/",
   },
   {
     id: "classifiedads",
@@ -414,6 +461,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 10,
     description: "Free classifieds",
+    url: "https://www.classifiedads.com/real_estate_rentals/chico-ca/",
   },
   {
     id: "americanlisted",
@@ -422,6 +470,7 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 15,
     description: "US classifieds",
+    url: "https://chico.americanlisted.com/house-apartment-for-rent/",
   },
   {
     id: "adpost",
@@ -430,18 +479,21 @@ const SOURCES = [
     status: "blocked" as const,
     estimatedListings: 10,
     description: "Global classifieds",
+    url: "https://www.adpost.com/us/california/chico/real_estate/rentals/",
   },
   {
     id: "postlets",
-    name: "Postlets",
+    name: "Postlets (Zillow)",
     category: "classifieds",
     status: "blocked" as const,
     estimatedListings: 20,
     description: "Rental posting",
+    url: "https://www.zillow.com/rental-manager/",
   },
 ]
 
 const statusColors = { active: "bg-green-500", blocked: "bg-red-500", "api-only": "bg-yellow-500" }
+const statusLabels = { active: "Works", blocked: "Manual Only", "api-only": "API Required" }
 
 export default function AdminImportPage() {
   const [isProcessing, setIsProcessing] = useState(false)
@@ -459,6 +511,9 @@ export default function AdminImportPage() {
   const [scrapeSources, setScrapeSources] = useState<string[]>(["known"])
   const [sourceFilter, setSourceFilter] = useState<"all" | "active" | "blocked" | "api-only">("all")
   const [logs, setLogs] = useState<string[]>([])
+  const [manualPasteData, setManualPasteData] = useState("")
+  const [manualPasteSource, setManualPasteSource] = useState("")
+  const [showManualPaste, setShowManualPaste] = useState(false)
 
   const addLog = (msg: string) => setLogs((prev) => [...prev.slice(-99), `[${new Date().toLocaleTimeString()}] ${msg}`])
 
@@ -580,28 +635,52 @@ export default function AdminImportPage() {
   const renderSourceList = (sources: typeof SOURCES, title: string, icon: React.ReactNode) => {
     if (sources.length === 0) return null
     return (
-      <div>
+      <div className="mb-6">
         <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
           {icon}
           {title} ({sources.length})
         </h3>
-        <div className="space-y-2 ml-2">
+        <div className="space-y-2">
           {sources.map((source) => (
             <div
               key={source.id}
               className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
             >
-              <Checkbox checked={scrapeSources.includes(source.id)} onCheckedChange={() => toggleSource(source.id)} />
-              <div className={`h-3 w-3 rounded-full ${statusColors[source.status]}`} title={source.status} />
+              <Checkbox
+                checked={scrapeSources.includes(source.id)}
+                onCheckedChange={() => toggleSource(source.id)}
+                disabled={source.status !== "active"}
+              />
+              <div className={`h-3 w-3 rounded-full shrink-0 ${statusColors[source.status]}`} title={source.status} />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium">{source.name}</span>
                   <Badge variant="outline" className="text-xs">
-                    {source.estimatedListings} listings
+                    ~{source.estimatedListings} listings
+                  </Badge>
+                  <Badge
+                    variant={
+                      source.status === "active"
+                        ? "default"
+                        : source.status === "api-only"
+                          ? "secondary"
+                          : "destructive"
+                    }
+                    className="text-xs"
+                  >
+                    {statusLabels[source.status]}
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">{source.description}</p>
               </div>
+              {source.url && (
+                <a href={source.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                  <Button variant="outline" size="sm" className="gap-1 bg-transparent">
+                    <ExternalLink className="h-3 w-3" />
+                    Visit
+                  </Button>
+                </a>
+              )}
             </div>
           ))}
         </div>
@@ -686,9 +765,31 @@ export default function AdminImportPage() {
                   <Globe className="h-5 w-5" />
                   Web Scrape Rental Listings ({SOURCES.length} Sources)
                 </CardTitle>
-                <CardDescription>Select sources to scrape. Most major sites block automation.</CardDescription>
+                <CardDescription>
+                  Select sources to scrape. Most sites block automation - use "Visit" links to browse manually and use
+                  Manual Entry to add listings.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>How Web Scraping Works</AlertTitle>
+                  <AlertDescription className="space-y-2">
+                    <p>
+                      <strong className="text-green-600">Green (Works)</strong> - Automatic scraping works. Select and
+                      click "Start Scraping".
+                    </p>
+                    <p>
+                      <strong className="text-yellow-600">Yellow (API Required)</strong> - Requires API key setup.
+                      Contact source for developer access.
+                    </p>
+                    <p>
+                      <strong className="text-red-600">Red (Manual Only)</strong> - Site blocks bots. Click "Visit" to
+                      browse, then use Manual Entry to add listings.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+
                 {/* Filter Buttons */}
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <Label className="text-base font-semibold">
@@ -705,10 +806,10 @@ export default function AdminImportPage() {
                         {filter === "all"
                           ? "All"
                           : filter === "active"
-                            ? "Active"
+                            ? "Works"
                             : filter === "blocked"
-                              ? "Blocked"
-                              : "API Only"}{" "}
+                              ? "Manual Only"
+                              : "API Required"}{" "}
                         ({filter === "all" ? SOURCES.length : SOURCES.filter((s) => s.status === filter).length})
                       </Button>
                     ))}
@@ -722,23 +823,16 @@ export default function AdminImportPage() {
                     size="sm"
                     onClick={() => setScrapeSources(SOURCES.filter((s) => s.status === "active").map((s) => s.id))}
                   >
-                    Select Active Only
+                    Select Working Sources
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setScrapeSources([])}>
                     Clear All
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setScrapeSources(filteredSources.map((s) => s.id))}
-                  >
-                    Select All Filtered
                   </Button>
                 </div>
 
                 {/* Sources List */}
                 <ScrollArea className="h-[500px] border rounded-lg p-4">
-                  <div className="space-y-6">
+                  <div className="space-y-2">
                     {renderSourceList(databaseSources, "Internal Databases", <Database className="h-4 w-4" />)}
                     {renderSourceList(localSources, "Local Butte County Sites", <MapPin className="h-4 w-4" />)}
                     {renderSourceList(nationalSources, "National Rental Sites", <Globe className="h-4 w-4" />)}
@@ -748,7 +842,11 @@ export default function AdminImportPage() {
 
                 {/* Selected Count and Scrape Button */}
                 <div className="flex items-center justify-between pt-4 border-t">
-                  <span className="text-sm text-muted-foreground">{scrapeSources.length} source(s) selected</span>
+                  <span className="text-sm text-muted-foreground">
+                    {scrapeSources.length} source(s) selected (
+                    {scrapeSources.filter((id) => SOURCES.find((s) => s.id === id)?.status === "active").length} will
+                    work automatically)
+                  </span>
                   <div className="flex gap-2">
                     {scrapeResults && scrapeResults.properties.length > 0 && (
                       <Button onClick={handleImportScraped} disabled={isProcessing}>
@@ -760,13 +858,19 @@ export default function AdminImportPage() {
                         Import {scrapeResults.properties.length} Properties
                       </Button>
                     )}
-                    <Button onClick={handleScrape} disabled={isScraping || scrapeSources.length === 0}>
+                    <Button
+                      onClick={handleScrape}
+                      disabled={
+                        isScraping ||
+                        scrapeSources.filter((id) => SOURCES.find((s) => s.id === id)?.status === "active").length === 0
+                      }
+                    >
                       {isScraping ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       ) : (
                         <Globe className="h-4 w-4 mr-2" />
                       )}
-                      Start Scraping {scrapeSources.length} Source(s)
+                      Start Scraping
                     </Button>
                   </div>
                 </div>
@@ -785,11 +889,15 @@ export default function AdminImportPage() {
 
                 {scrapeResults && (
                   <Alert>
-                    <AlertCircle className="h-4 w-4" />
+                    <CheckCircle className="h-4 w-4" />
                     <AlertTitle>Scrape Complete</AlertTitle>
                     <AlertDescription>
-                      Found {scrapeResults.properties.length} properties.
-                      {scrapeResults.errors.length > 0 && ` ${scrapeResults.errors.length} errors occurred.`}
+                      Found {scrapeResults.properties.length} properties from working sources.
+                      {scrapeResults.errors.length > 0 && (
+                        <span className="block mt-1 text-muted-foreground">
+                          {scrapeResults.errors.length} sources skipped (blocked or require API).
+                        </span>
+                      )}
                     </AlertDescription>
                   </Alert>
                 )}
