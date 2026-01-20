@@ -2,10 +2,11 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
 import { SiteHeader } from "@/components/site-header"
+import SiteFooter from "@/components/site-footer"
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-white dark:bg-black transition-colors duration-300">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-black transition-colors duration-300">
       <SiteHeader />
 
       {/* Hero Section */}
@@ -131,20 +132,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-200 dark:border-gray-800 py-8 px-6">
-        <div className="max-w-7xl mx-auto flex justify-between items-center text-sm text-gray-600 dark:text-gray-400">
-          <div>© 2026 Quenga Designs. All rights reserved.</div>
-          <div className="flex gap-6">
-            <Link href="/projects" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-              Projects
-            </Link>
-            <Link href="/admin" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-              Admin
-            </Link>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import SiteFooter from "@/components/site-footer" // Import SiteFooter component
 
 import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
@@ -34,6 +35,8 @@ import { importAPNs, getAPNStats, type ImportResult } from "@/app/actions/import
 import { importAddresses, getAddressStats } from "@/app/actions/import-addresses"
 import { scrapeRentals, importScrapedProperties, type ScrapeResult } from "@/app/actions/scrape-rentals"
 import { refreshAllProperties, type RefreshResult } from "@/app/actions/refresh-properties"
+import { lookupAddress, lookupAPN } from "@/app/actions/lookup-property"
+import { Input } from "@/components/ui/input"
 
 const SOURCES = [
   // Internal Databases (1)
@@ -511,9 +514,17 @@ export default function AdminImportPage() {
   const [scrapeSources, setScrapeSources] = useState<string[]>(["known"])
   const [sourceFilter, setSourceFilter] = useState<"all" | "active" | "blocked" | "api-only">("all")
   const [logs, setLogs] = useState<string[]>([])
-  const [manualPasteData, setManualPasteData] = useState("")
-  const [manualPasteSource, setManualPasteSource] = useState("")
-  const [showManualPaste, setShowManualPaste] = useState(false)
+  
+  // Lookup state
+  const [addressLookup, setAddressLookup] = useState("")
+  const [apnLookup, setApnLookup] = useState("")
+  const [isLookingUp, setIsLookingUp] = useState(false)
+  const [lookupResult, setLookupResult] = useState<{
+    success: boolean
+    property: Record<string, unknown> | null
+    message: string
+    source: string
+  } | null>(null)
 
   const addLog = (msg: string) => setLogs((prev) => [...prev.slice(-99), `[${new Date().toLocaleTimeString()}] ${msg}`])
 
@@ -632,6 +643,44 @@ export default function AdminImportPage() {
     }
   }
 
+  const handleAddressLookup = async () => {
+    if (!addressLookup.trim()) return
+    setIsLookingUp(true)
+    setLookupResult(null)
+    addLog(`Looking up address: ${addressLookup}`)
+    try {
+      const result = await lookupAddress(addressLookup)
+      setLookupResult(result)
+      addLog(`Lookup ${result.success ? "successful" : "failed"}: ${result.message}`)
+      if (result.success) {
+        setAddressLookup("")
+      }
+    } catch (error) {
+      addLog(`Lookup error: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsLookingUp(false)
+    }
+  }
+
+  const handleAPNLookup = async () => {
+    if (!apnLookup.trim()) return
+    setIsLookingUp(true)
+    setLookupResult(null)
+    addLog(`Looking up APN: ${apnLookup}`)
+    try {
+      const result = await lookupAPN(apnLookup)
+      setLookupResult(result)
+      addLog(`Lookup ${result.success ? "successful" : "failed"}: ${result.message}`)
+      if (result.success) {
+        setApnLookup("")
+      }
+    } catch (error) {
+      addLog(`Lookup error: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsLookingUp(false)
+    }
+  }
+
   const renderSourceList = (sources: typeof SOURCES, title: string, icon: React.ReactNode) => {
     if (sources.length === 0) return null
     return (
@@ -689,9 +738,9 @@ export default function AdminImportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen flex flex-col bg-background">
       <SiteHeader />
-      <main className="container max-w-5xl mx-auto px-6 py-12">
+      <main className="flex-1 container max-w-5xl mx-auto px-6 py-12">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-8">
           <Link href="/" className="hover:text-foreground transition-colors">
@@ -906,11 +955,69 @@ export default function AdminImportPage() {
           </TabsContent>
 
           <TabsContent value="addresses" className="space-y-6">
+            {/* Address Lookup Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  Address Lookup
+                </CardTitle>
+                <CardDescription>
+                  Enter an address to look up property data. If found in the database, it will display the existing record.
+                  If not found, it will geocode the address and create a new property record.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter address (e.g., 123 Main St, Chico, CA 95928)"
+                    value={addressLookup}
+                    onChange={(e) => setAddressLookup(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddressLookup()}
+                    className="flex-1"
+                  />
+                  <Button onClick={handleAddressLookup} disabled={isLookingUp || !addressLookup.trim()}>
+                    {isLookingUp ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4 mr-2" />
+                    )}
+                    Lookup
+                  </Button>
+                </div>
+                
+                {lookupResult && (
+                  <Alert variant={lookupResult.success ? "default" : "destructive"}>
+                    {lookupResult.success ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4" />
+                    )}
+                    <AlertTitle>{lookupResult.success ? "Property Found" : "Lookup Failed"}</AlertTitle>
+                    <AlertDescription>
+                      {lookupResult.message}
+                      {lookupResult.property && (
+                        <div className="mt-2 p-2 bg-muted rounded text-xs font-mono">
+                          <div>Address: {String(lookupResult.property.address || "N/A")}</div>
+                          <div>City: {String(lookupResult.property.city || "N/A")}</div>
+                          <div>APN: {String(lookupResult.property.apn || "N/A")}</div>
+                          {lookupResult.property.current_rent && (
+                            <div>Rent: ${Number(lookupResult.property.current_rent).toLocaleString()}</div>
+                          )}
+                        </div>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Bulk Import Section */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Home className="h-5 w-5" />
-                  Import Addresses
+                  Bulk Import Addresses
                 </CardTitle>
                 <CardDescription>Import property addresses from the local database.</CardDescription>
               </CardHeader>
@@ -952,11 +1059,68 @@ export default function AdminImportPage() {
           </TabsContent>
 
           <TabsContent value="apns" className="space-y-6">
+            {/* APN Lookup Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  APN Lookup
+                </CardTitle>
+                <CardDescription>
+                  Enter an Assessor Parcel Number (APN) to look up property data from the database.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter APN (e.g., 006-270-001-000)"
+                    value={apnLookup}
+                    onChange={(e) => setApnLookup(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAPNLookup()}
+                    className="flex-1 font-mono"
+                  />
+                  <Button onClick={handleAPNLookup} disabled={isLookingUp || !apnLookup.trim()}>
+                    {isLookingUp ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Search className="h-4 w-4 mr-2" />
+                    )}
+                    Lookup
+                  </Button>
+                </div>
+                
+                {lookupResult && (
+                  <Alert variant={lookupResult.success ? "default" : "destructive"}>
+                    {lookupResult.success ? (
+                      <CheckCircle className="h-4 w-4" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4" />
+                    )}
+                    <AlertTitle>{lookupResult.success ? "Property Found" : "Lookup Failed"}</AlertTitle>
+                    <AlertDescription>
+                      {lookupResult.message}
+                      {lookupResult.property && (
+                        <div className="mt-2 p-2 bg-muted rounded text-xs font-mono">
+                          <div>APN: {String(lookupResult.property.apn || "N/A")}</div>
+                          <div>Address: {String(lookupResult.property.address || "N/A")}</div>
+                          <div>City: {String(lookupResult.property.city || "N/A")}</div>
+                          {lookupResult.property.current_rent && (
+                            <div>Rent: ${Number(lookupResult.property.current_rent).toLocaleString()}</div>
+                          )}
+                        </div>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Bulk Import Section */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Database className="h-5 w-5" />
-                  Import APNs
+                  Bulk Import APNs
                 </CardTitle>
                 <CardDescription>Import Assessor Parcel Numbers from the local database.</CardDescription>
               </CardHeader>
@@ -1071,6 +1235,7 @@ export default function AdminImportPage() {
           </Card>
         )}
       </main>
+      <SiteFooter />
     </div>
   )
 }

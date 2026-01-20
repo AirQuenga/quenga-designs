@@ -344,19 +344,31 @@ async function scrapeRentInChico(): Promise<ScrapedProperty[]> {
   return properties
 }
 
+// Rate limiting configuration - 30 seconds between requests to avoid detection
+const RATE_LIMIT_DELAY = 30000 // 30 seconds
+
 /**
  * Main scraping function that aggregates from multiple sources
+ * Uses 30-second delays between requests to avoid bot detection
  */
-export async function scrapeRentalListings(sources: string[] = ["known"]): Promise<ScrapeResult> {
+export async function scrapeRentalListings(
+  sources: string[] = ["known"],
+  onProgress?: (message: string, current: number, total: number) => void
+): Promise<ScrapeResult> {
   const allProperties: ScrapedProperty[] = []
   const errors: string[] = []
+  let sourceIndex = 0
+  const totalSources = sources.length
 
   for (const sourceId of sources) {
+    sourceIndex++
     const source = RENTAL_SOURCES[sourceId]
     if (!source) continue
 
+    onProgress?.(`Processing ${source.name}...`, sourceIndex, totalSources)
+
     if (source.status === "blocked") {
-      errors.push(`${source.name}: Site blocks automated scraping - consider API access`)
+      errors.push(`${source.name}: Site blocks automated scraping - visit manually`)
       continue
     }
 
@@ -377,7 +389,12 @@ export async function scrapeRentalListings(sources: string[] = ["known"]): Promi
       }
 
       allProperties.push(...properties)
-      await delay(1000)
+      
+      // Apply rate limiting - wait 30 seconds between sources to avoid detection
+      if (sourceIndex < totalSources && sources.length > 1) {
+        onProgress?.(`Rate limiting: waiting 30 seconds before next source...`, sourceIndex, totalSources)
+        await delay(RATE_LIMIT_DELAY)
+      }
     } catch (error) {
       errors.push(`${source.name}: ${error instanceof Error ? error.message : "Unknown error"}`)
     }

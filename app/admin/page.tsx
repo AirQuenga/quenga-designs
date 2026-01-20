@@ -1,6 +1,8 @@
 import Link from "next/link"
-import { Settings, Database, FileUp, Users, Shield, Activity, Home } from "lucide-react"
+import { Settings, Database, FileUp, Users, Shield, Activity } from "lucide-react"
 import { SiteHeader } from "@/components/site-header"
+import SiteFooter from "@/components/site-footer"
+import { PageHeader } from "@/components/page-header"
 
 export const metadata = {
   title: "Admin",
@@ -18,31 +20,18 @@ export default function AdminPage() {
   const totalSources = Object.values(sourceCategories).reduce((a, b) => a + b, 0)
 
   return (
-    <div className="min-h-screen bg-white dark:bg-black transition-colors duration-300">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-black transition-colors duration-300">
       <SiteHeader />
 
-      {/* Hero Section */}
-      <main className="max-w-7xl mx-auto px-6 py-16">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-12">
-          <Link href="/" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-            <Home className="h-4 w-4" />
-          </Link>
-          <span>/</span>
-          <span>Admin</span>
-        </div>
+      <main className="flex-1 max-w-7xl mx-auto px-6 w-full">
+        <PageHeader
+          title="Admin Dashboard"
+          description="Manage your tools, settings, and data from a centralized control panel."
+          breadcrumbs={[{ label: "Admin" }]}
+        />
 
-        <h1 className="text-7xl md:text-8xl font-semibold tracking-tight leading-none mb-6">
-          Admin Dashboard
-        </h1>
-        <p className="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mb-16">
-          Manage your tools, settings, and data from a centralized control panel.
-        </p>
-      </main>
-
-      {/* Admin Tools Grid */}
-      <section className="pb-20 px-6">
-        <div className="max-w-7xl mx-auto">
+        {/* Admin Tools Grid */}
+        <section className="pb-20">
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Property Import Tool */}
             <Link
@@ -111,23 +100,11 @@ export default function AdminPage() {
               )
             })}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-200 dark:border-gray-800 py-8 px-6">
-        <div className="max-w-7xl mx-auto flex justify-between items-center text-sm text-gray-600 dark:text-gray-400">
-          <div>© 2026 Quenga Designs. All rights reserved.</div>
-          <div className="flex gap-6">
-            <Link href="/projects" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-              Projects
-            </Link>
-            <Link href="/admin" className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
-              Admin
-            </Link>
-          </div>
-        </div>
-      </footer>
+      </main>
+
+      <SiteFooter />
     </div>
   )
 }
