@@ -499,6 +499,9 @@ const statusColors = { active: "bg-green-500", blocked: "bg-red-500", "api-only"
 const statusLabels = { active: "Works", blocked: "Manual Only", "api-only": "API Required" }
 
 export default function AdminImportPage() {
+  const [customSources, setCustomSources] = useState<typeof SOURCES>([])
+  const [newWebsiteName, setNewWebsiteName] = useState("")
+  const [newWebsiteUrl, setNewWebsiteUrl] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [isScraping, setIsScraping] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -533,10 +536,29 @@ export default function AdminImportPage() {
     getAddressStats().then(setAddressStats)
   }, [])
 
+  const allSources = useMemo(() => [...SOURCES, ...customSources], [customSources])
+  
   const filteredSources = useMemo(() => {
-    if (sourceFilter === "all") return SOURCES
-    return SOURCES.filter((s) => s.status === sourceFilter)
-  }, [sourceFilter])
+    if (sourceFilter === "all") return allSources
+    return allSources.filter((s) => s.status === sourceFilter)
+  }, [sourceFilter, allSources])
+
+  const addCustomWebsite = () => {
+    if (!newWebsiteName.trim() || !newWebsiteUrl.trim()) return
+    const newSource = {
+      id: `custom-${Date.now()}`,
+      name: newWebsiteName.trim(),
+      category: "classifieds" as const,
+      status: "blocked" as const,
+      estimatedListings: 0,
+      description: "Custom website added by user",
+      url: newWebsiteUrl.trim().startsWith("http") ? newWebsiteUrl.trim() : `https://${newWebsiteUrl.trim()}`,
+    }
+    setCustomSources((prev) => [...prev, newSource])
+    setNewWebsiteName("")
+    setNewWebsiteUrl("")
+    addLog(`Added custom website: ${newSource.name}`)
+  }
 
   const databaseSources = useMemo(() => filteredSources.filter((s) => s.category === "database"), [filteredSources])
   const localSources = useMemo(() => filteredSources.filter((s) => s.category === "local"), [filteredSources])
@@ -695,11 +717,10 @@ export default function AdminImportPage() {
               key={source.id}
               className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
             >
-              <Checkbox
-                checked={scrapeSources.includes(source.id)}
-                onCheckedChange={() => toggleSource(source.id)}
-                disabled={source.status !== "active"}
-              />
+                <Checkbox
+                                checked={scrapeSources.includes(source.id)}
+                                onCheckedChange={() => toggleSource(source.id)}
+                              />
               <div className={`h-3 w-3 rounded-full shrink-0 ${statusColors[source.status]}`} title={source.status} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -812,7 +833,7 @@ export default function AdminImportPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Globe className="h-5 w-5" />
-                  Web Scrape Rental Listings ({SOURCES.length} Sources)
+                  Web Scrape Rental Listings ({allSources.length} Sources)
                 </CardTitle>
                 <CardDescription>
                   Select sources to scrape. Most sites block automation - use "Visit" links to browse manually and use
@@ -820,29 +841,37 @@ export default function AdminImportPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>How Web Scraping Works</AlertTitle>
-                  <AlertDescription className="space-y-2">
-                    <p>
-                      <strong className="text-green-600">Green (Works)</strong> - Automatic scraping works. Select and
-                      click "Start Scraping".
-                    </p>
-                    <p>
-                      <strong className="text-yellow-600">Yellow (API Required)</strong> - Requires API key setup.
-                      Contact source for developer access.
-                    </p>
-                    <p>
-                      <strong className="text-red-600">Red (Manual Only)</strong> - Site blocks bots. Click "Visit" to
-                      browse, then use Manual Entry to add listings.
-                    </p>
-                  </AlertDescription>
-                </Alert>
+                {/* Add Custom Website */}
+                <div className="flex gap-2 items-end flex-wrap">
+                  <div className="flex-1 min-w-[200px]">
+                    <Label htmlFor="websiteName" className="text-sm mb-1 block">Website Name</Label>
+                    <Input
+                      id="websiteName"
+                      placeholder="e.g., Local Rentals Site"
+                      value={newWebsiteName}
+                      onChange={(e) => setNewWebsiteName(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <Label htmlFor="websiteUrl" className="text-sm mb-1 block">Website URL</Label>
+                    <Input
+                      id="websiteUrl"
+                      placeholder="e.g., https://example.com/rentals"
+                      value={newWebsiteUrl}
+                      onChange={(e) => setNewWebsiteUrl(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && addCustomWebsite()}
+                    />
+                  </div>
+                  <Button onClick={addCustomWebsite} disabled={!newWebsiteName.trim() || !newWebsiteUrl.trim()}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Website
+                  </Button>
+                </div>
 
                 {/* Filter Buttons */}
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <Label className="text-base font-semibold">
-                    Showing {filteredSources.length} of {SOURCES.length} Sources
+                    Showing {filteredSources.length} of {allSources.length} Sources
                   </Label>
                   <div className="flex gap-2 flex-wrap">
                     {(["all", "active", "blocked", "api-only"] as const).map((filter) => (
@@ -859,7 +888,7 @@ export default function AdminImportPage() {
                             : filter === "blocked"
                               ? "Manual Only"
                               : "API Required"}{" "}
-                        ({filter === "all" ? SOURCES.length : SOURCES.filter((s) => s.status === filter).length})
+                        ({filter === "all" ? allSources.length : allSources.filter((s) => s.status === filter).length})
                       </Button>
                     ))}
                   </div>
