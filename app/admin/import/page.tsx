@@ -37,6 +37,8 @@ import { scrapeRentals, importScrapedProperties, type ScrapeResult } from "@/app
 import { refreshAllProperties, type RefreshResult } from "@/app/actions/refresh-properties"
 import { lookupAddress, lookupAPN } from "@/app/actions/lookup-property"
 import { Input } from "@/components/ui/input"
+import { AddressSearch } from "@/components/admin/address-search"
+import type { ParsedAddress } from "@/config/address-constants"
 
 const SOURCES = [
   // Internal Databases (1)
@@ -665,18 +667,14 @@ export default function AdminImportPage() {
     }
   }
 
-  const handleAddressLookup = async () => {
-    if (!addressLookup.trim()) return
+  const handleAddressLookup = async (parsed: ParsedAddress) => {
     setIsLookingUp(true)
     setLookupResult(null)
-    addLog(`Looking up address: ${addressLookup}`)
+    addLog(`Looking up address: ${parsed.formatted_address}`)
     try {
-      const result = await lookupAddress(addressLookup)
+      const result = await lookupAddress(parsed)
       setLookupResult(result)
       addLog(`Lookup ${result.success ? "successful" : "failed"}: ${result.message}`)
-      if (result.success) {
-        setAddressLookup("")
-      }
     } catch (error) {
       addLog(`Lookup error: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
@@ -997,23 +995,7 @@ export default function AdminImportPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter address (e.g., 123 Main St, Chico, CA 95928)"
-                    value={addressLookup}
-                    onChange={(e) => setAddressLookup(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddressLookup()}
-                    className="flex-1"
-                  />
-                  <Button onClick={handleAddressLookup} disabled={isLookingUp || !addressLookup.trim()}>
-                    {isLookingUp ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Search className="h-4 w-4 mr-2" />
-                    )}
-                    Lookup
-                  </Button>
-                </div>
+                <AddressSearch onLookup={handleAddressLookup} isLoading={isLookingUp} />
                 
                 {lookupResult && (
                   <Alert variant={lookupResult.success ? "default" : "destructive"}>
