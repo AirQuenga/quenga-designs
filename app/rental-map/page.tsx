@@ -16,7 +16,6 @@ async function fetchPropertiesWithRetry(retries = 3, delay = 1000): Promise<any[
         // Check if it's a rate limit error
         if (error.message?.includes("Too Many") || error.code === "429") {
           if (attempt < retries) {
-            console.log(`[v0] Rate limited, retrying in ${delay}ms (attempt ${attempt}/${retries})`)
             await new Promise((resolve) => setTimeout(resolve, delay))
             delay *= 2 // Exponential backoff
             continue
@@ -30,7 +29,6 @@ async function fetchPropertiesWithRetry(retries = 3, delay = 1000): Promise<any[
       // Handle non-JSON responses (like "Too Many Requests" text)
       if (err?.message?.includes("Unexpected token") || err?.message?.includes("Too Many")) {
         if (attempt < retries) {
-          console.log(`[v0] Rate limited (parse error), retrying in ${delay}ms (attempt ${attempt}/${retries})`)
           await new Promise((resolve) => setTimeout(resolve, delay))
           delay *= 2
           continue
@@ -38,7 +36,6 @@ async function fetchPropertiesWithRetry(retries = 3, delay = 1000): Promise<any[
       }
 
       if (attempt === retries) {
-        console.error("[v0] Failed to fetch properties after retries:", err)
         return []
       }
     }

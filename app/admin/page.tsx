@@ -20,7 +20,7 @@ export default function AdminPage() {
   const totalSources = Object.values(sourceCategories).reduce((a, b) => a + b, 0)
 
   return (
-    <div className="min-h-screen flex flex-col bg-white dark:bg-black transition-colors duration-300">
+    <div className="min-h-screen flex flex-col bg-background transition-colors duration-300">
       <SiteHeader />
 
       <main className="flex-1 max-w-7xl mx-auto px-6 w-full">
@@ -36,7 +36,7 @@ export default function AdminPage() {
             {/* Property Import Tool */}
             <Link
               href="/admin/import"
-              className="group relative bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-3xl p-8 transition-all hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-xl cursor-pointer"
+              className="group relative bg-card border border-border rounded-3xl p-8 transition-all hover:border-muted-foreground/30 hover:shadow-xl cursor-pointer"
             >
               <div className="absolute top-8 right-8">
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
@@ -54,21 +54,21 @@ export default function AdminPage() {
                 Property Import
               </h3>
 
-              <p className="text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+              <p className="text-muted-foreground leading-relaxed mb-6">
                 Web Scrape Rental Listings ({totalSources} Sources). Import properties from multiple sources.
               </p>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="text-gray-600 dark:text-gray-400">
+                <div className="text-muted-foreground">
                   Internal Databases: <span className="font-semibold">{sourceCategories.internal}</span>
                 </div>
-                <div className="text-gray-600 dark:text-gray-400">
+                <div className="text-muted-foreground">
                   Local Sites: <span className="font-semibold">{sourceCategories.local}</span>
                 </div>
-                <div className="text-gray-600 dark:text-gray-400">
+                <div className="text-muted-foreground">
                   National Sites: <span className="font-semibold">{sourceCategories.national}</span>
                 </div>
-                <div className="text-gray-600 dark:text-gray-400">
+                <div className="text-muted-foreground">
                   Classifieds: <span className="font-semibold">{sourceCategories.classifieds}</span>
                 </div>
               </div>
@@ -86,7 +86,7 @@ export default function AdminPage() {
               return (
                 <div
                   key={idx}
-                  className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-3xl p-8 opacity-60 cursor-default"
+                  className="bg-card border border-border rounded-3xl p-8 opacity-60 cursor-default"
                 >
                   <div className="mb-6">
                     <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
@@ -94,7 +94,7 @@ export default function AdminPage() {
                     </div>
                   </div>
                   <h3 className="text-2xl font-semibold mb-3">{tool.name}</h3>
-                  <p className="text-gray-600 dark:text-gray-400 leading-relaxed">{tool.desc}</p>
+                  <p className="text-muted-foreground leading-relaxed">{tool.desc}</p>
                   <div className="mt-4 text-sm text-gray-500 dark:text-gray-400">Coming Soon</div>
                 </div>
               )
