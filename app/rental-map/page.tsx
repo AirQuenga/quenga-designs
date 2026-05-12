@@ -1,51 +1,16 @@
+import { Suspense } from "react"
 import { RentalAtlas } from "@/components/rental-atlas"
-import { createClient } from "@/lib/supabase/server"
+import { getFilterOptions } from "@/app/actions/get-properties"
 
-async function fetchPropertiesWithRetry(retries = 3, delay = 1000): Promise<any[]> {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const supabase = await createClient()
-
-      const { data: properties, error } = await supabase
-        .from("properties")
-        .select("*")
-        .order("is_available", { ascending: false })
-        .order("city", { ascending: true })
-
-      if (error) {
-        // Check if it's a rate limit error
-        if (error.message?.includes("Too Many") || error.code === "429") {
-          if (attempt < retries) {
-            await new Promise((resolve) => setTimeout(resolve, delay))
-            delay *= 2 // Exponential backoff
-            continue
-          }
-        }
-        throw error
-      }
-
-      return properties || []
-    } catch (err: any) {
-      // Handle non-JSON responses (like "Too Many Requests" text)
-      if (err?.message?.includes("Unexpected token") || err?.message?.includes("Too Many")) {
-        if (attempt < retries) {
-          await new Promise((resolve) => setTimeout(resolve, delay))
-          delay *= 2
-          continue
-        }
-      }
-
-      if (attempt === retries) {
-        return []
-      }
-    }
-  }
-
-  return []
-}
+export const dynamic = "force-dynamic"
 
 export default async function RentalMapPage() {
-  const properties = await fetchPropertiesWithRetry()
+  // Only pre-load filter options (fast) — properties are fetched client-side with pagination
+  const { cities, managementCompanies } = await getFilterOptions()
 
-  return <RentalAtlas initialProperties={properties} />
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background text-muted-foreground">Loading Butte County Rental Map…</div>}>
+      <RentalAtlas cities={cities} managementCompanies={managementCompanies} />
+    </Suspense>
+  )
 }
