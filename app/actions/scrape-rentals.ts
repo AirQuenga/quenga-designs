@@ -53,7 +53,6 @@ async function rateLimitedFetch(url: string, retryCount = 0): Promise<Response |
     // Handle rate limiting responses
     if (response.status === 429 || response.status === 403) {
       if (retryCount < RATE_LIMIT_CONFIG.maxRetries) {
-        console.log(`[v0] Rate limited, waiting ${RATE_LIMIT_CONFIG.retryDelay / 1000}s before retry ${retryCount + 1}/${RATE_LIMIT_CONFIG.maxRetries}`)
         await delay(RATE_LIMIT_CONFIG.retryDelay)
         return rateLimitedFetch(url, retryCount + 1)
       }
@@ -63,7 +62,6 @@ async function rateLimitedFetch(url: string, retryCount = 0): Promise<Response |
     return response
   } catch (error) {
     if (retryCount < RATE_LIMIT_CONFIG.maxRetries) {
-      console.log(`[v0] Request failed, retrying in ${RATE_LIMIT_CONFIG.retryDelay / 1000}s`)
       await delay(RATE_LIMIT_CONFIG.retryDelay)
       return rateLimitedFetch(url, retryCount + 1)
     }
@@ -288,7 +286,6 @@ function parsePetPolicy(text: string): { allowed: boolean; restrictions: string 
  * This function is disabled and returns empty results
  */
 async function scrapeCraigslistChico(): Promise<ScrapedProperty[]> {
-  console.log("[v0] Craigslist scraping is disabled - use Known Properties instead")
   return []
 }
 
@@ -619,7 +616,7 @@ export async function importScrapedProperties(properties: ScrapedProperty[]): Pr
   return { success, failed, skipped, errors }
 }
 
-export interface RentalSource {
+interface RentalSource {
   id: string
   name: string
   category: "database" | "local" | "national" | "classifieds"
@@ -628,7 +625,7 @@ export interface RentalSource {
   estimatedListings: number
 }
 
-export const RENTAL_SOURCES: Record<string, RentalSource> = {
+const RENTAL_SOURCES: Record<string, RentalSource> = {
   // Internal Databases (Always work)
   known: {
     id: "known",

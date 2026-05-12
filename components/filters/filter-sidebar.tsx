@@ -119,7 +119,7 @@ export function FilterSidebar({
                 />
                 <Label htmlFor="show-postfire" className="flex items-center gap-2 text-sm">
                   <span className="h-3 w-3 rounded-full bg-orange-500" />
-                  Post-Fire
+                  Post-Fire Housing
                 </Label>
               </div>
               <div className="flex items-center gap-2">
@@ -278,7 +278,7 @@ export function FilterSidebar({
 
           <div className="flex items-center justify-between">
             <Label htmlFor="post-fire" className="text-sm">
-              Post-2018 Rebuilds
+              Post-Fire Housing
             </Label>
             <Switch
               id="post-fire"

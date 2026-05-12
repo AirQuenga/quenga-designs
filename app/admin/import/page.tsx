@@ -3,7 +3,7 @@
 import type React from "react"
 import SiteFooter from "@/components/site-footer" // Import SiteFooter component
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { SiteHeader } from "@/components/site-header"
+import SiteHeader from "@/components/site-header"
 import { ManualEntryForm } from "@/components/admin/manual-entry-form"
 import {
   Home,
@@ -37,6 +37,9 @@ import { scrapeRentals, importScrapedProperties, type ScrapeResult } from "@/app
 import { refreshAllProperties, type RefreshResult } from "@/app/actions/refresh-properties"
 import { lookupAddress, lookupAPN } from "@/app/actions/lookup-property"
 import { Input } from "@/components/ui/input"
+import { AddressSearch } from "@/components/admin/address-search"
+import type { ParsedAddress } from "@/config/address-constants"
+import { FileDown, FileUp, X } from "lucide-react"
 
 const SOURCES = [
   // Internal Databases (1)
@@ -665,18 +668,14 @@ export default function AdminImportPage() {
     }
   }
 
-  const handleAddressLookup = async () => {
-    if (!addressLookup.trim()) return
+  const handleAddressLookup = async (parsed: ParsedAddress) => {
     setIsLookingUp(true)
     setLookupResult(null)
-    addLog(`Looking up address: ${addressLookup}`)
+    addLog(`Looking up address: ${parsed.formatted_address}`)
     try {
-      const result = await lookupAddress(addressLookup)
+      const result = await lookupAddress(parsed)
       setLookupResult(result)
       addLog(`Lookup ${result.success ? "successful" : "failed"}: ${result.message}`)
-      if (result.success) {
-        setAddressLookup("")
-      }
     } catch (error) {
       addLog(`Lookup error: ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
@@ -701,6 +700,132 @@ export default function AdminImportPage() {
     } finally {
       setIsLookingUp(false)
     }
+  }
+
+  // ── CSV import state ──────────────────────────────────────────────────────
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [csvParsing, setCsvParsing] = useState(false)
+  const [csvRows, setCsvRows] = useState<Record<string, string>[]>([])
+  const [csvErrors, setCsvErrors] = useState<string[]>([])
+  const [csvImporting, setCsvImporting] = useState(false)
+  const [csvProgress, setCsvProgress] = useState(0)
+  const [csvResult, setCsvResult] = useState<{ inserted: number; skipped: number; failed: number } | null>(null)
+  const csvInputRef = useRef<HTMLInputElement>(null)
+
+  const CSV_TEMPLATE_HEADERS = [
+    "address", "city", "state", "zip_code", "county",
+    "property_type", "bedrooms", "bathrooms", "square_feet", "year_built",
+    "current_rent", "is_available", "management_company", "management_type",
+    "owner_name", "phone_number", "website", "is_post_fire_rebuild", "is_student_housing", "is_section_8",
+    "notes",
+  ]
+
+  const handleDownloadTemplate = () => {
+    const csv = CSV_TEMPLATE_HEADERS.join(",") + "\n" +
+      "123 Main St,Chico,CA,95928,Butte,apartment,2,1,850,1995,1400,true,Hignell Companies,professional,,,(530) 555-1234,false,false,false,"
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "butte-county-property-template.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleCsvDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const file = e.dataTransfer.files[0]
+    if (file && (file.name.endsWith(".csv") || file.type === "text/csv")) parseCsv(file)
+  }
+
+  const parseCsv = async (file: File) => {
+    setCsvFile(file)
+    setCsvParsing(true)
+    setCsvRows([])
+    setCsvErrors([])
+    setCsvResult(null)
+    addLog(`Parsing CSV: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`)
+
+    // Dynamically import PapaParse so it doesn't bloat the initial bundle
+    const Papa = (await import("papaparse")).default
+
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      worker: true, // offload to web worker — keeps UI thread free for 6k+ rows
+      complete: (results) => {
+        const rows = results.data as Record<string, string>[]
+        const parseErrors = results.errors.map((e) => `Row ${e.row}: ${e.message}`)
+        setCsvRows(rows)
+        setCsvErrors(parseErrors)
+        setCsvParsing(false)
+        addLog(`Parsed ${rows.length.toLocaleString()} rows, ${parseErrors.length} parse errors`)
+      },
+      error: (err: Error) => {
+        setCsvErrors([err.message])
+        setCsvParsing(false)
+        addLog(`CSV parse failed: ${err.message}`)
+      },
+    })
+  }
+
+  const handleCsvImport = async () => {
+    if (!csvRows.length) return
+    setCsvImporting(true)
+    setCsvProgress(0)
+    const BATCH = 200
+    let inserted = 0
+    let skipped = 0
+    let failed = 0
+
+    // Dynamically import supabase client at runtime (server action alternative for large batches)
+    const { createClient } = await import("@/lib/supabase/client")
+    const supabase = createClient()
+
+    for (let i = 0; i < csvRows.length; i += BATCH) {
+      const batch = csvRows.slice(i, i + BATCH).map((row) => ({
+        apn: `CSV-${Date.now()}-${i + csvRows.indexOf(row)}`,
+        address: row.address || "",
+        city: row.city || "Chico",
+        state: row.state || "CA",
+        zip_code: row.zip_code || null,
+        county: row.county || "Butte",
+        property_type: row.property_type || "apartment",
+        bedrooms: row.bedrooms ? parseInt(row.bedrooms) : null,
+        bathrooms: row.bathrooms ? parseFloat(row.bathrooms) : null,
+        square_feet: row.square_feet ? parseInt(row.square_feet) : null,
+        year_built: row.year_built ? parseInt(row.year_built) : null,
+        current_rent: row.current_rent ? parseFloat(row.current_rent) : null,
+        is_available: row.is_available?.toLowerCase() === "true",
+        management_company: row.management_company || null,
+        management_type: (row.management_type as any) || "unknown",
+        owner_name: row.owner_name || null,
+        phone_number: row.phone_number || null,
+        website: row.website || null,
+        is_post_fire_rebuild: row.is_post_fire_rebuild?.toLowerCase() === "true",
+        is_student_housing: row.is_student_housing?.toLowerCase() === "true",
+        is_section_8: row.is_section_8?.toLowerCase() === "true",
+        notes: row.notes || null,
+        data_source: "csv_import",
+        enrichment_status: "pending",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }))
+
+      const { error } = await supabase.from("properties").upsert(batch, { onConflict: "apn", ignoreDuplicates: true })
+      if (error) {
+        failed += batch.length
+        addLog(`Batch ${Math.ceil(i / BATCH) + 1} error: ${error.message}`)
+      } else {
+        inserted += batch.length
+      }
+
+      setCsvProgress(Math.round(((i + BATCH) / csvRows.length) * 100))
+    }
+
+    setCsvResult({ inserted, skipped, failed })
+    setCsvImporting(false)
+    addLog(`CSV import complete: ${inserted} inserted, ${skipped} skipped, ${failed} failed`)
   }
 
   const renderSourceList = (sources: typeof SOURCES, title: string, icon: React.ReactNode) => {
@@ -997,23 +1122,7 @@ export default function AdminImportPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter address (e.g., 123 Main St, Chico, CA 95928)"
-                    value={addressLookup}
-                    onChange={(e) => setAddressLookup(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddressLookup()}
-                    className="flex-1"
-                  />
-                  <Button onClick={handleAddressLookup} disabled={isLookingUp || !addressLookup.trim()}>
-                    {isLookingUp ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Search className="h-4 w-4 mr-2" />
-                    )}
-                    Lookup
-                  </Button>
-                </div>
+                <AddressSearch onLookup={handleAddressLookup} isLoading={isLookingUp} />
                 
                 {lookupResult && (
                   <Alert variant={lookupResult.success ? "default" : "destructive"}>
@@ -1037,6 +1146,118 @@ export default function AdminImportPage() {
                       )}
                     </AlertDescription>
                   </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* CSV Upload Section */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <FileUp className="h-5 w-5" />
+                      CSV File Import
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Upload a CSV with up to 6,000+ rows. Parsed in a background worker — the UI stays responsive.
+                    </CardDescription>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="shrink-0">
+                    <FileDown className="mr-1.5 h-4 w-4" />
+                    Download Template
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Drop zone */}
+                <div
+                  className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/30 p-8 text-center transition-colors hover:bg-muted/60"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleCsvDrop}
+                  onClick={() => csvInputRef.current?.click()}
+                >
+                  <input
+                    ref={csvInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) parseCsv(f) }}
+                  />
+                  {csvParsing ? (
+                    <>
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Parsing CSV in background worker…</span>
+                    </>
+                  ) : csvFile ? (
+                    <div className="flex items-center gap-2">
+                      <FileUp className="h-5 w-5 text-primary" />
+                      <span className="text-sm font-medium">{csvFile.name}</span>
+                      <span className="text-xs text-muted-foreground">({csvRows.length.toLocaleString()} rows)</span>
+                      <button
+                        className="ml-1 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => { e.stopPropagation(); setCsvFile(null); setCsvRows([]); setCsvErrors([]); setCsvResult(null) }}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <FileUp className="h-8 w-8 text-muted-foreground" />
+                      <span className="text-sm font-medium">Drop CSV here or click to browse</span>
+                      <span className="text-xs text-muted-foreground">Supports files with 6,000+ rows</span>
+                    </>
+                  )}
+                </div>
+
+                {csvErrors.length > 0 && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Parse warnings ({csvErrors.length})</AlertTitle>
+                    <AlertDescription className="max-h-24 overflow-y-auto font-mono text-xs">
+                      {csvErrors.slice(0, 10).join("\n")}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {csvRows.length > 0 && (
+                  <>
+                    <Button
+                      className="w-full"
+                      onClick={handleCsvImport}
+                      disabled={csvImporting}
+                    >
+                      {csvImporting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="mr-2 h-4 w-4" />
+                      )}
+                      Import {csvRows.length.toLocaleString()} Rows
+                    </Button>
+                    {csvImporting && (
+                      <div className="space-y-1">
+                        <Progress value={csvProgress} />
+                        <p className="text-center text-xs text-muted-foreground">{csvProgress}% complete</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {csvResult && (
+                  <div className="grid grid-cols-3 gap-3 rounded-lg border border-border p-3">
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-green-600">{csvResult.inserted.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">Inserted</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-yellow-600">{csvResult.skipped.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">Skipped</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xl font-bold text-red-600">{csvResult.failed.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">Failed</div>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>

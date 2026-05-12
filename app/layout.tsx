@@ -5,16 +5,23 @@ import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 
 import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google"
+import { ThemeProvider } from "@/components/theme-provider"
 
-// Initialize fonts
-const _geist = Geist({ subsets: ["latin"], weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"] })
-const _geistMono = Geist_Mono({
+// Initialize fonts with CSS variable support
+const geistSans = Geist({
   subsets: ["latin"],
   weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  variable: "--font-geist-sans",
 })
-const _sourceSerif_4 = Source_Serif_4({
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  variable: "--font-geist-mono",
+})
+const sourceSerif = Source_Serif_4({
   subsets: ["latin"],
   weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
+  variable: "--font-source-serif",
 })
 
 export const metadata: Metadata = {
@@ -42,6 +49,20 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-icon.png",
   },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    siteName: "Quenga Designs",
+    title: "Quenga Designs",
+    description:
+      "Powerful tools that make work effortless. Simple, intuitive, and built to scale.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Quenga Designs",
+    description:
+      "Powerful tools that make work effortless. Simple, intuitive, and built to scale.",
+  },
 }
 
 export default function RootLayout({
@@ -50,9 +71,20 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={`font-mono antialiased`}>
-        {children}
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable}`}
+      suppressHydrationWarning
+    >
+      <body className="font-mono antialiased bg-background">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>
