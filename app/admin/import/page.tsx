@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { SiteHeader } from "@/components/site-header"
+import SiteHeader from "@/components/site-header"
 import { ManualEntryForm } from "@/components/admin/manual-entry-form"
 import {
   Home,

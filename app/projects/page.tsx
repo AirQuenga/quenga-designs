@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { Map, Clock } from "lucide-react"
-import { SiteHeader } from "@/components/site-header"
+import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
 import { PageHeader } from "@/components/page-header"
 

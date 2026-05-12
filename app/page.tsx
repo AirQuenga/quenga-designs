@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowRight } from "lucide-react"
-import { SiteHeader } from "@/components/site-header"
+import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
 
 export default function Home() {

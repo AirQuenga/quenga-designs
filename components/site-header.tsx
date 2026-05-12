@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 
-export function SiteHeader() {
+export default function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 transition-colors">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -15,6 +15,13 @@ export function SiteHeader() {
             className="text-sm font-medium hover:text-primary transition-colors relative group"
           >
             Projects
+            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary group-hover:w-full transition-all duration-200" />
+          </Link>
+          <Link
+            href="/community-services"
+            className="text-sm font-medium hover:text-primary transition-colors relative group"
+          >
+            Community Services
             <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary group-hover:w-full transition-all duration-200" />
           </Link>
           <Link
