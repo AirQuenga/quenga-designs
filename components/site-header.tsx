@@ -13,7 +13,14 @@ export default function SiteHeader() {
           Quenga Designs
         </Link>
 
-        <div className="flex items-center gap-8">
+        <nav className="flex items-center gap-8" aria-label="Primary navigation">
+          <Link
+            href="/projects"
+            className="text-sm font-medium hover:text-primary transition-colors relative group"
+          >
+            Home
+            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary group-hover:w-full transition-all duration-200" />
+          </Link>
           <Link
             href="/programs"
             className="text-sm font-medium hover:text-primary transition-colors relative group"
@@ -29,7 +36,7 @@ export default function SiteHeader() {
             <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary group-hover:w-full transition-all duration-200" />
           </Link>
           <ThemeToggle />
-        </div>
+        </nav>
       </div>
     </header>
   )

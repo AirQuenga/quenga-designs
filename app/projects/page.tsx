@@ -1,17 +1,54 @@
 import Link from "next/link"
-import { Map, Clock, HeartHandshake } from "lucide-react"
+import type { Metadata } from "next"
+import { Map, Clock, HeartHandshake, ArrowRight } from "lucide-react"
 import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
 import { PageHeader } from "@/components/page-header"
 
-export const metadata = {
-  title: "Projects",
-  description: "Explore all Quenga Designs tools and projects",
+export const metadata: Metadata = {
+  title: "Tools",
+  description:
+    "Explore the Quenga Designs suite of civic tools for Butte County — including the Rental Atlas and Community Services directory.",
 }
+
+interface ToolCard {
+  href: string
+  title: string
+  description: string
+  icon: typeof Map
+  stats: { value: string; label: string }[]
+}
+
+const tools: ToolCard[] = [
+  {
+    href: "/rental-map",
+    title: "Butte County Rental Atlas",
+    description:
+      "Interactive mapping platform with real-time availability, FMR calculations, and comprehensive property data.",
+    icon: Map,
+    stats: [
+      { value: "5,700+", label: "Properties" },
+      { value: "50+", label: "Sources" },
+      { value: "2026", label: "HUD FMR" },
+    ],
+  },
+  {
+    href: "/community-services",
+    title: "Community Services",
+    description:
+      "Find mental health, food banks, legal aid, job training, housing support, and other community resources throughout Butte County.",
+    icon: HeartHandshake,
+    stats: [
+      { value: "200+", label: "Services" },
+      { value: "12", label: "Categories" },
+      { value: "24/7", label: "Access" },
+    ],
+  },
+]
 
 export default function ProjectsPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-background transition-colors duration-300">
+    <div className="min-h-screen flex flex-col bg-background">
       <SiteHeader />
 
       <main className="flex-1 max-w-7xl mx-auto px-6 w-full pb-20">
@@ -21,89 +58,53 @@ export default function ProjectsPage() {
           breadcrumbs={[{ label: "Tools" }]}
         />
 
-        {/* Projects Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 pt-4">
-          {/* Active Project - Rental Map */}
-          <Link
-            href="/rental-map"
-            className="group bg-card border border-border rounded-3xl p-8 transition-all hover:border-muted-foreground/30 hover:shadow-xl"
-          >
-            <div className="mb-6">
-              <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
-                <Map className="h-7 w-7 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-            <h3 className="text-2xl font-semibold mb-3 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-              Butte County Rental Atlas
-            </h3>
-            <p className="text-muted-foreground leading-relaxed mb-6">
-              Interactive mapping platform with real-time availability, FMR calculations, and comprehensive property
-              data.
-            </p>
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div>
-                <div className="text-lg font-semibold">5,700+</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Properties</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold">50+</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Sources</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold">2026</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">HUD FMR</div>
-              </div>
-            </div>
-            <div className="flex items-center font-medium text-blue-600 dark:text-blue-400 group-hover:gap-2 transition-all">
-              Try Now
-            </div>
-          </Link>
-
-          {/* Active Project - Community Services */}
-          <Link
-            href="/community-services"
-            className="group bg-card border border-border rounded-3xl p-8 transition-all hover:border-muted-foreground/30 hover:shadow-xl"
-          >
-            <div className="mb-6">
-              <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-4">
-                <HeartHandshake className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
-              </div>
-            </div>
-            <h3 className="text-2xl font-semibold mb-3 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-              Community Services
-            </h3>
-            <p className="text-muted-foreground leading-relaxed mb-6">
-              Find mental health, food banks, legal aid, job training, housing support, and other community resources
-              throughout Butte County.
-            </p>
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div>
-                <div className="text-lg font-semibold">200+</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Services</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold">12</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Categories</div>
-              </div>
-              <div>
-                <div className="text-lg font-semibold">24/7</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Access</div>
-              </div>
-            </div>
-            <div className="flex items-center font-medium text-emerald-600 dark:text-emerald-400 group-hover:gap-2 transition-all">
-              Try Now
-            </div>
-          </Link>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4">
+          {tools.map((tool) => {
+            const Icon = tool.icon
+            return (
+              <Link
+                key={tool.href}
+                href={tool.href}
+                className="group bg-card border border-border rounded-xl p-8 shadow-sm transition-all hover:border-primary/40 hover:shadow-md"
+              >
+                <div className="mb-6">
+                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Icon className="h-6 w-6 text-primary" aria-hidden="true" />
+                  </div>
+                </div>
+                <h3 className="text-xl font-semibold mb-2 text-card-foreground group-hover:text-primary transition-colors">
+                  {tool.title}
+                </h3>
+                <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+                  {tool.description}
+                </p>
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  {tool.stats.map((stat) => (
+                    <div key={stat.label}>
+                      <div className="text-lg font-semibold text-card-foreground">
+                        {stat.value}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="inline-flex items-center gap-1.5 text-sm font-medium text-primary group-hover:gap-2.5 transition-all">
+                  Try Now
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </div>
+              </Link>
+            )
+          })}
 
           {/* Coming Soon Placeholder */}
-          <div className="bg-card border border-border rounded-3xl p-8 opacity-60">
+          <div className="bg-card border border-dashed border-border rounded-xl p-8 opacity-70">
             <div className="mb-6">
-              <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
-                <Clock className="h-7 w-7 text-gray-400" />
+              <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
+                <Clock className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
               </div>
             </div>
-            <h3 className="text-2xl font-semibold mb-3">Coming Soon</h3>
-            <p className="text-muted-foreground leading-relaxed">
+            <h3 className="text-xl font-semibold mb-2 text-card-foreground">Coming Soon</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
               New tools and projects are currently in development.
             </p>
           </div>
