@@ -27,7 +27,7 @@ import {
   Link2,
   AlertTriangle,
 } from "lucide-react"
-import { auditBatch, getAuditTotal } from "@/app/actions/audit-db"
+import { auditBatch, getAuditTotal, type AuditLogLine } from "@/app/actions/audit-db"
 
 type ScrapedListing = {
   source_url: string
@@ -75,7 +75,7 @@ export default function PropertyDataHubPage() {
   const [auditFixed, setAuditFixed] = useState(0)
   const [auditFailed, setAuditFailed] = useState(0)
   const [auditRunning, setAuditRunning] = useState(false)
-  const [auditNotes, setAuditNotes] = useState<string[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLogLine[]>([])
   const stopAuditRef = useRef(false)
 
   /* ---------- SCRAPE state ---------- */
@@ -166,22 +166,39 @@ export default function PropertyDataHubPage() {
     setAuditScanned(0)
     setAuditFixed(0)
     setAuditFailed(0)
-    setAuditNotes([])
+    setAuditLogs([])
     try {
       const total = await getAuditTotal()
       setAuditTotal(total)
+      setAuditLogs([
+        { level: "INFO", message: `[INFO] Starting audit of ${total.toLocaleString()} records (batch size 25)` },
+      ])
       let offset = 0
-      while (offset !== null && !stopAuditRef.current) {
-        const res = await auditBatch(offset, 50)
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        if (stopAuditRef.current) {
+          setAuditLogs((p) => [...p, { level: "INFO", message: "[INFO] Audit stopped by user" }])
+          break
+        }
+        const res = await auditBatch(offset, 25)
         setAuditScanned((p) => p + res.scanned)
         setAuditFixed((p) => p + res.fixed)
         setAuditFailed((p) => p + res.failed)
-        if (res.notes.length > 0) setAuditNotes((p) => [...p, ...res.notes].slice(-200))
-        if (res.nextOffset === null) break
+        if (res.logs.length > 0) {
+          setAuditLogs((p) => [...p, ...res.logs].slice(-400))
+        }
+        if (res.nextOffset === null) {
+          setAuditLogs((p) => [
+            ...p,
+            { level: "INFO", message: `[INFO] Audit complete. Reached end of records.` },
+          ])
+          break
+        }
         offset = res.nextOffset
       }
     } catch (e) {
-      setAuditNotes((p) => [...p, `Error: ${e instanceof Error ? e.message : "Unknown error"}`])
+      const msg = e instanceof Error ? e.message : "Unknown error"
+      setAuditLogs((p) => [...p, { level: "ERROR", message: `[ERROR] Audit halted: ${msg}` }])
     } finally {
       setAuditRunning(false)
     }
@@ -195,7 +212,7 @@ export default function PropertyDataHubPage() {
     setAuditScanned(0)
     setAuditFixed(0)
     setAuditFailed(0)
-    setAuditNotes([])
+    setAuditLogs([])
     setAuditTotal(null)
   }
 
@@ -378,22 +395,26 @@ export default function PropertyDataHubPage() {
             </div>
 
             <p className="mb-4 text-xs text-muted-foreground">
-              Scans all property records in batches of 50. Geocodes missing coordinates, standardizes addresses, fills
-              ZIP codes, and repairs known typos.
+              Scans all property records in batches of 25. Each fix is persisted to Supabase immediately. Geocodes
+              missing coordinates, standardizes addresses, fills ZIP codes, and repairs known typos.
             </p>
 
             <div className="mb-4 grid grid-cols-3 gap-2">
               <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
                 <div className="text-lg font-semibold text-foreground">{auditScanned.toLocaleString()}</div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Scanned</div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Total Scanned</div>
               </div>
-              <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
-                <div className="text-lg font-semibold text-primary">{auditFixed.toLocaleString()}</div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Fixed</div>
+              <div className="rounded-md border border-border bg-emerald-50 p-2 text-center dark:bg-emerald-950/30">
+                <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">
+                  {auditFixed.toLocaleString()}
+                </div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Fixes Applied</div>
               </div>
-              <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
-                <div className="text-lg font-semibold text-foreground">{auditFailed.toLocaleString()}</div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Failed</div>
+              <div className="rounded-md border border-border bg-red-50 p-2 text-center dark:bg-red-950/30">
+                <div className="text-lg font-semibold text-red-700 dark:text-red-400">
+                  {auditFailed.toLocaleString()}
+                </div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Errors Found</div>
               </div>
             </div>
 
@@ -424,11 +445,20 @@ export default function PropertyDataHubPage() {
               </Button>
             </div>
 
-            {auditNotes.length > 0 && (
-              <div className="mt-4 max-h-32 overflow-y-auto rounded-md border border-border bg-slate-900 p-3 font-mono text-[10px] leading-relaxed text-slate-300">
-                {auditNotes.slice(-30).map((n, i) => (
-                  <div key={i} className="truncate">
-                    {n}
+            {auditLogs.length > 0 && (
+              <div className="mt-4 flex h-56 flex-col overflow-y-auto rounded-md border border-slate-700 bg-slate-950 p-3 font-mono text-[11px] leading-relaxed">
+                {auditLogs.slice(-200).map((line, i) => (
+                  <div
+                    key={i}
+                    className={
+                      line.level === "SUCCESS"
+                        ? "text-emerald-400"
+                        : line.level === "ERROR"
+                          ? "text-red-400"
+                          : "text-slate-400"
+                    }
+                  >
+                    {line.message}
                   </div>
                 ))}
               </div>
