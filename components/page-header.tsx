@@ -10,11 +10,11 @@ interface BreadcrumbItem {
 interface PageHeaderProps {
   title: string
   description?: string
-  breadcrumbs: BreadcrumbItem[]
+  breadcrumbs?: BreadcrumbItem[]
   children?: React.ReactNode
 }
 
-export function PageHeader({ title, description, breadcrumbs, children }: PageHeaderProps) {
+export function PageHeader({ title, description, breadcrumbs = [], children }: PageHeaderProps) {
   return (
     <div className="py-16">
       {/* Breadcrumb */}
