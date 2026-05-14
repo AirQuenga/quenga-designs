@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -36,15 +35,12 @@ export function FilterSidebar({
   mapFilters,
   onMapFiltersChange,
 }: FilterSidebarProps) {
-  const [searchQuery, setSearchQuery] = useState("")
-
   const updateFilter = <K extends keyof PropertyFilters>(key: K, value: PropertyFilters[K]) => {
     onFiltersChange({ ...filters, [key]: value })
   }
 
   const clearFilters = () => {
     onFiltersChange({})
-    setSearchQuery("")
   }
 
   const hasActiveFilters = Object.values(filters).some((v) => v !== undefined && v !== "")
@@ -72,9 +68,9 @@ export function FilterSidebar({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search address or APN..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search address, city, or APN..."
+            value={filters.searchQuery ?? ""}
+            onChange={(e) => updateFilter("searchQuery", e.target.value || undefined)}
             className="pl-9"
           />
         </div>

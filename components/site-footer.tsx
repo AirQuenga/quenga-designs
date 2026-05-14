@@ -6,14 +6,14 @@ export default function SiteFooter() {
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
         <div>© 2026 Quenga Designs. All rights reserved.</div>
         <nav className="flex gap-6" aria-label="Footer navigation">
-          <Link 
-            href="/projects" 
+          <Link
+            href="/community-services"
             className="hover:text-foreground transition-colors"
           >
-            Projects
+            Community Services
           </Link>
-          <Link 
-            href="/admin" 
+          <Link
+            href="/admin"
             className="hover:text-foreground transition-colors"
           >
             Admin

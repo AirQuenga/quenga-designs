@@ -9,7 +9,7 @@ import { ErrorBoundary, PropertyDetailFallback } from "@/components/error-bounda
 import type { Property, PropertyFilters } from "@/types/property"
 import { getProperties, getMapProperties } from "@/app/actions/get-properties"
 import { Button } from "@/components/ui/button"
-import { Map, List, Menu, Download, ExternalLink, Settings, Home, Loader2 } from "lucide-react"
+import { Map, List, Download, ExternalLink, Settings, Home, Loader2, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import Link from "next/link"
 
 const EXCEL_FILE_URL = "/comps-sheet.xlsx"
@@ -143,8 +143,15 @@ export function RentalAtlas({ cities, managementCompanies }: RentalAtlasProps) {
       {/* Header */}
       <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => setShowFilters(!showFilters)} className="lg:hidden">
-            <Menu className="h-5 w-5" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            className="h-8 gap-1.5"
+            title={showFilters ? "Hide Filters" : "Show Filters"}
+          >
+            {showFilters ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            <span className="hidden sm:inline">{showFilters ? "Hide Filters" : "Show Filters"}</span>
           </Button>
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
@@ -156,7 +163,7 @@ export function RentalAtlas({ cities, managementCompanies }: RentalAtlasProps) {
 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" asChild className="h-8 bg-transparent">
-            <Link href="/"><Home className="mr-1 h-4 w-4" />Home</Link>
+            <Link href="/projects"><Home className="mr-1 h-4 w-4" />Home</Link>
           </Button>
           <Button variant="outline" size="sm" asChild className="h-8 bg-transparent">
             <Link href="/admin/import"><Settings className="mr-1 h-4 w-4" />Admin Import</Link>

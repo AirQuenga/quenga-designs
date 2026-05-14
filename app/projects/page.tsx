@@ -14,15 +14,15 @@ export default function ProjectsPage() {
     <div className="min-h-screen flex flex-col bg-background transition-colors duration-300">
       <SiteHeader />
 
-      <main className="flex-1 max-w-7xl mx-auto px-6 w-full">
+      <main className="flex-1 max-w-7xl mx-auto px-6 w-full pb-20">
         <PageHeader
-          title="Our Projects"
+          title="Tools"
           description="Explore our suite of powerful tools designed to make your work effortless."
-          breadcrumbs={[{ label: "Projects" }]}
+          breadcrumbs={[{ label: "Tools" }]}
         />
 
         {/* Projects Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 pt-4">
           {/* Active Project - Rental Map */}
           <Link
             href="/rental-map"
@@ -55,7 +55,7 @@ export default function ProjectsPage() {
               </div>
             </div>
             <div className="flex items-center font-medium text-blue-600 dark:text-blue-400 group-hover:gap-2 transition-all">
-              View Tools
+              Try Now
             </div>
           </Link>
 

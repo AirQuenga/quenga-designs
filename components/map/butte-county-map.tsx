@@ -238,17 +238,19 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
     setZoom((z) => Math.max(8, Math.min(18, z + (e.deltaY > 0 ? -1 : 1))))
   }, [])
 
-  // Select/deselect all layers
+  // Toggle all layers — if any are off, turn all on; otherwise turn all off
   const allSelected = Object.values(filters).every(Boolean)
-  const noneSelected = Object.values(filters).every((v) => !v)
 
-  const handleSelectAll = () => {
+  const handleToggleAll = () => {
     if (!onFiltersChange) return
-    onFiltersChange({ showAvailable: true, showOccupied: true, showPostFire: true, showStudentHousing: true, showSection8: true })
-  }
-  const handleDeselectAll = () => {
-    if (!onFiltersChange) return
-    onFiltersChange({ showAvailable: false, showOccupied: false, showPostFire: false, showStudentHousing: false, showSection8: false })
+    const nextValue = !allSelected
+    onFiltersChange({
+      showAvailable: nextValue,
+      showOccupied: nextValue,
+      showPostFire: nextValue,
+      showStudentHousing: nextValue,
+      showSection8: nextValue,
+    })
   }
 
   const handleClusterClick = (cluster: Cluster) => {
@@ -299,21 +301,13 @@ export function ButteCountyMap({ properties, selectedProperty, onPropertySelect,
                   <ChevronUp className="h-4 w-4" />
                 </button>
               </div>
-              {/* Select / Deselect All */}
-              <div className="flex gap-2 border-b border-gray-100 px-3 py-2">
+              {/* Toggle All */}
+              <div className="border-b border-gray-100 px-3 py-2">
                 <button
-                  onClick={handleSelectAll}
-                  disabled={allSelected}
-                  className="flex-1 rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground disabled:opacity-40"
+                  onClick={handleToggleAll}
+                  className="w-full rounded bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:opacity-90"
                 >
-                  Select All
-                </button>
-                <button
-                  onClick={handleDeselectAll}
-                  disabled={noneSelected}
-                  className="flex-1 rounded border border-gray-200 px-2 py-1 text-xs font-medium text-gray-700 disabled:opacity-40"
-                >
-                  Deselect All
+                  {allSelected ? "Hide All Layers" : "Toggle All Layers"}
                 </button>
               </div>
               {/* Individual layer checkboxes */}
