@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Pause, Play, Trash2, Terminal } from "lucide-react"
+import { Pause, Play, Trash2, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-export type LogSource = "SCRAPE" | "IMPORT" | "AUDIT" | "SYSTEM"
+export type LogSource = "SCRAPE" | "IMPORT" | "AUDIT" | "WEB" | "SYSTEM"
 export type LogStatus = "SUCCESS" | "FIXED" | "ERROR" | "WARN" | "INFO"
 
 export interface LogEntry {
@@ -21,39 +21,45 @@ interface LiveLogProps {
   height?: number
 }
 
+/**
+ * Civic Professional palette tuned for a deep-navy background.
+ * Status pills use soft, slightly-desaturated tones so they read clearly
+ * on `bg-[#0f1e3d]` without the neon "terminal" feel of pure RGB greens/reds.
+ */
 const STATUS_STYLES: Record<LogStatus, { dot: string; badge: string; text: string }> = {
   SUCCESS: {
-    dot: "bg-emerald-400",
-    badge: "bg-emerald-400/10 text-emerald-300 border-emerald-400/30",
-    text: "text-emerald-200",
+    dot: "bg-emerald-300",
+    badge: "bg-emerald-400/15 text-emerald-200 border-emerald-300/30",
+    text: "text-emerald-50/95",
   },
   FIXED: {
-    dot: "bg-emerald-400",
-    badge: "bg-emerald-400/10 text-emerald-300 border-emerald-400/30",
-    text: "text-emerald-200",
+    dot: "bg-emerald-300",
+    badge: "bg-emerald-400/15 text-emerald-200 border-emerald-300/30",
+    text: "text-emerald-50/95",
   },
   ERROR: {
-    dot: "bg-red-400",
-    badge: "bg-red-400/10 text-red-300 border-red-400/30",
-    text: "text-red-200",
+    dot: "bg-rose-300",
+    badge: "bg-rose-400/15 text-rose-200 border-rose-300/30",
+    text: "text-rose-50/95",
   },
   WARN: {
-    dot: "bg-amber-400",
-    badge: "bg-amber-400/10 text-amber-300 border-amber-400/30",
-    text: "text-amber-200",
+    dot: "bg-amber-300",
+    badge: "bg-amber-400/15 text-amber-100 border-amber-300/30",
+    text: "text-amber-50/95",
   },
   INFO: {
-    dot: "bg-sky-400",
-    badge: "bg-sky-400/10 text-sky-300 border-sky-400/30",
-    text: "text-sky-200",
+    dot: "bg-sky-300",
+    badge: "bg-sky-400/15 text-sky-100 border-sky-300/30",
+    text: "text-sky-50/90",
   },
 }
 
 const SOURCE_BADGE: Record<LogSource, string> = {
-  SCRAPE: "bg-purple-400/10 text-purple-300 border-purple-400/30",
-  IMPORT: "bg-blue-400/10 text-blue-300 border-blue-400/30",
-  AUDIT: "bg-indigo-400/10 text-indigo-300 border-indigo-400/30",
-  SYSTEM: "bg-slate-400/10 text-slate-300 border-slate-400/30",
+  SCRAPE: "bg-violet-400/15 text-violet-100 border-violet-300/30",
+  IMPORT: "bg-blue-400/15 text-blue-100 border-blue-300/30",
+  AUDIT: "bg-indigo-400/15 text-indigo-100 border-indigo-300/30",
+  WEB: "bg-cyan-400/15 text-cyan-100 border-cyan-300/30",
+  SYSTEM: "bg-slate-400/15 text-slate-200 border-slate-300/30",
 }
 
 function formatTimestamp(ts: number): string {
@@ -66,11 +72,10 @@ function formatTimestamp(ts: number): string {
   })
 }
 
-export function LiveLog({ entries, onClear, height = 360 }: LiveLogProps) {
+export function LiveLog({ entries, onClear, height = 380 }: LiveLogProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
 
-  // Auto-scroll to bottom on new entries unless paused.
   useEffect(() => {
     if (paused) return
     const el = containerRef.current
@@ -89,32 +94,42 @@ export function LiveLog({ entries, onClear, height = 360 }: LiveLogProps) {
   )
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-950 shadow-lg">
-      {/* Terminal header */}
-      <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/60 px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <Terminal className="h-4 w-4 text-slate-400" />
-          <h3 className="text-sm font-semibold text-slate-100">Activity Log</h3>
-          <span className="ml-2 text-[10px] uppercase tracking-wide text-slate-500">
-            {entries.length} {entries.length === 1 ? "entry" : "entries"}
-          </span>
+    <section
+      className="overflow-hidden rounded-xl border border-slate-700/60 shadow-lg"
+      style={{
+        // Navy → slightly darker navy gradient, mirroring the Rental Atlas hero card.
+        background: "linear-gradient(180deg, #1e3a8a 0%, #15265f 100%)",
+      }}
+    >
+      {/* Civic header strip */}
+      <div className="flex items-center justify-between border-b border-slate-100/10 bg-[#1e3a8a]/60 px-4 py-3 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white/10">
+            <Activity className="h-3.5 w-3.5 text-white" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white">Activity Log</h3>
+            <p className="text-[10px] uppercase tracking-wider text-slate-300/80">
+              {entries.length} {entries.length === 1 ? "event" : "events"} · real-time
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
           {/* Live counts */}
           <div className="hidden items-center gap-2 text-[10px] sm:flex">
-            <span className="inline-flex items-center gap-1 rounded border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {counts.success}
+            <span className="inline-flex items-center gap-1 rounded border border-emerald-300/30 bg-emerald-400/15 px-1.5 py-0.5 font-medium text-emerald-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+              {counts.success} OK
             </span>
-            <span className="inline-flex items-center gap-1 rounded border border-red-400/30 bg-red-400/10 px-1.5 py-0.5 text-red-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-              {counts.error}
+            <span className="inline-flex items-center gap-1 rounded border border-rose-300/30 bg-rose-400/15 px-1.5 py-0.5 font-medium text-rose-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
+              {counts.error} ERR
             </span>
             {counts.warn > 0 && (
-              <span className="inline-flex items-center gap-1 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-amber-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                {counts.warn}
+              <span className="inline-flex items-center gap-1 rounded border border-amber-300/30 bg-amber-400/15 px-1.5 py-0.5 font-medium text-amber-100">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
+                {counts.warn} WARN
               </span>
             )}
           </div>
@@ -123,7 +138,7 @@ export function LiveLog({ entries, onClear, height = 360 }: LiveLogProps) {
             size="sm"
             variant="ghost"
             onClick={() => setPaused((p) => !p)}
-            className="h-7 gap-1.5 px-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+            className="h-7 gap-1.5 px-2 text-xs text-slate-100 hover:bg-white/10 hover:text-white"
           >
             {paused ? (
               <>
@@ -141,7 +156,7 @@ export function LiveLog({ entries, onClear, height = 360 }: LiveLogProps) {
               size="sm"
               variant="ghost"
               onClick={onClear}
-              className="h-7 gap-1.5 px-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+              className="h-7 gap-1.5 px-2 text-xs text-slate-100 hover:bg-white/10 hover:text-white"
             >
               <Trash2 className="h-3 w-3" /> Clear
             </Button>
@@ -149,15 +164,19 @@ export function LiveLog({ entries, onClear, height = 360 }: LiveLogProps) {
         </div>
       </div>
 
-      {/* Terminal body */}
+      {/* Log body */}
       <div
         ref={containerRef}
         style={{ height }}
-        className="overflow-y-auto px-4 py-3 font-mono text-[12px] leading-relaxed"
+        className="overflow-y-auto px-4 py-3 font-mono text-[12px] leading-relaxed text-slate-100"
       >
         {entries.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-slate-600">
-            <p>Waiting for activity…</p>
+          <div className="flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
+            <Activity className="h-5 w-5 opacity-40" />
+            <p className="text-xs">Waiting for activity…</p>
+            <p className="text-[10px] text-slate-400/70">
+              Scrape, import, and audit events will stream here in real time.
+            </p>
           </div>
         ) : (
           <ul className="space-y-1">
@@ -165,7 +184,7 @@ export function LiveLog({ entries, onClear, height = 360 }: LiveLogProps) {
               const styles = STATUS_STYLES[entry.status]
               return (
                 <li key={entry.id} className="flex items-start gap-2">
-                  <span className="mt-0.5 flex-shrink-0 select-none text-slate-500">
+                  <span className="mt-0.5 flex-shrink-0 select-none text-slate-300/70">
                     [{formatTimestamp(entry.timestamp)}]
                   </span>
                   <span

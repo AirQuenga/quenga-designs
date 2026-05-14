@@ -28,6 +28,7 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import { auditBatch, getAuditTotal, type AuditLogLine } from "@/app/actions/audit-db"
+import { auditWebSearchBatch } from "@/app/actions/audit-web-search"
 import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 
 type ScrapedListing = {
@@ -71,6 +72,7 @@ export default function PropertyDataHubPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   /* ---------- AUDIT state ---------- */
+  const [auditMode, setAuditMode] = useState<"standard" | "web">("standard")
   const [auditTotal, setAuditTotal] = useState<number | null>(null)
   const [auditScanned, setAuditScanned] = useState(0)
   const [auditFixed, setAuditFixed] = useState(0)
@@ -217,31 +219,38 @@ export default function PropertyDataHubPage() {
     setAuditScanned(0)
     setAuditFixed(0)
     setAuditFailed(0)
+
+    const isWeb = auditMode === "web"
+    const source: LogSource = isWeb ? "WEB" : "AUDIT"
+    const runner = isWeb ? auditWebSearchBatch : auditBatch
+
     try {
       const total = await getAuditTotal()
       setAuditTotal(total)
       appendLog(
-        "AUDIT",
+        source,
         "INFO",
-        `Starting audit of ${total.toLocaleString()} records (batch size 25, paging bypasses default row cap)`,
+        isWeb
+          ? `Starting Web-Search audit of ${total.toLocaleString()} records (batch size 25, live web lookups via AI Gateway)`
+          : `Starting Standard audit of ${total.toLocaleString()} records (batch size 25, geocoding + standardization)`,
       )
       let offset = 0
       // eslint-disable-next-line no-constant-condition
       while (true) {
         if (stopAuditRef.current) {
-          appendLog("AUDIT", "WARN", `Audit stopped by user at row ${offset.toLocaleString()}`)
+          appendLog(source, "WARN", `Audit stopped by user at row ${offset.toLocaleString()}`)
           break
         }
-        const res = await auditBatch(offset, 25)
+        const res = await runner(offset, 25)
         setAuditScanned((p) => p + res.scanned)
         setAuditFixed((p) => p + res.fixed)
         setAuditFailed((p) => p + res.failed)
         for (const line of res.logs) {
-          appendLog("AUDIT", mapAuditLevel(line.level), line.message)
+          appendLog(source, mapAuditLevel(line.level), line.message)
         }
         if (res.nextOffset === null) {
           appendLog(
-            "AUDIT",
+            source,
             "SUCCESS",
             `Audit complete — scanned ${total.toLocaleString()} records (reached end of table)`,
           )
@@ -251,7 +260,7 @@ export default function PropertyDataHubPage() {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error"
-      appendLog("AUDIT", "ERROR", `Audit halted: ${msg}`)
+      appendLog(source, "ERROR", `Audit halted: ${msg}`)
     } finally {
       setAuditRunning(false)
     }
@@ -469,9 +478,38 @@ export default function PropertyDataHubPage() {
               )}
             </div>
 
+            {/* Mode selector */}
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-md border border-border bg-muted/30 p-1">
+              <button
+                type="button"
+                onClick={() => !auditRunning && setAuditMode("standard")}
+                disabled={auditRunning}
+                className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                  auditMode === "standard"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                } disabled:cursor-not-allowed`}
+              >
+                Standard
+              </button>
+              <button
+                type="button"
+                onClick={() => !auditRunning && setAuditMode("web")}
+                disabled={auditRunning}
+                className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                  auditMode === "web"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                } disabled:cursor-not-allowed`}
+              >
+                Web Search
+              </button>
+            </div>
+
             <p className="mb-4 text-xs text-muted-foreground">
-              Scans all property records in batches of 25. Each fix is persisted to Supabase immediately. Geocodes
-              missing coordinates, standardizes addresses, fills ZIP codes, and repairs known typos.
+              {auditMode === "standard"
+                ? "Scans all property records in batches of 25. Geocodes missing coordinates, standardizes addresses, fills ZIP codes, and repairs known typos. Each fix is persisted to Supabase immediately."
+                : "Uses live web search via the AI Gateway to fill 12 fields per row: Address, City, State, Zip, APN, Bedrooms, Bathrooms, Square Feet, Rent, Available Date, Management Company, and Notes."}
             </p>
 
             <div className="mb-4 grid grid-cols-3 gap-2">
@@ -508,7 +546,8 @@ export default function PropertyDataHubPage() {
             <div className="flex gap-2">
               {!auditRunning ? (
                 <Button onClick={runAudit} className="flex-1 gap-1.5">
-                  <Play className="h-4 w-4" /> Run System Audit
+                  <Play className="h-4 w-4" />
+                  {auditMode === "web" ? "Run Web-Search Audit" : "Run Standard Audit"}
                 </Button>
               ) : (
                 <Button onClick={stopAudit} variant="outline" className="flex-1 gap-1.5 bg-transparent">
