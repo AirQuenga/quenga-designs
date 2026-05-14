@@ -231,15 +231,34 @@ async function matchToAtlas(
 
 export async function POST(req: Request) {
   let url: string | undefined
+  let pastedHtml: string | undefined
   try {
-    const body = (await req.json()) as { url?: string }
+    const body = (await req.json()) as { url?: string; html?: string }
     url = body.url
+    pastedHtml = body.html
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
+  // ----- Easy-Paste fallback: parse raw HTML/text the user pasted in -----
+  if (!url && pastedHtml) {
+    if (typeof pastedHtml !== "string" || pastedHtml.trim().length < 10) {
+      return NextResponse.json({ error: "Pasted content is too short to parse" }, { status: 400 })
+    }
+    const sourceUrl = "paste://local"
+    const parsed = parseHtml(sourceUrl, pastedHtml)
+    const match = await matchToAtlas(parsed.address)
+    const listing: ScrapedListing = {
+      ...parsed,
+      source_host: "Easy Paste",
+      matched_property_id: match?.id ?? null,
+      matched_property_address: match?.address ?? null,
+    }
+    return NextResponse.json({ listing })
+  }
+
   if (!url || typeof url !== "string") {
-    return NextResponse.json({ error: "Missing 'url' in request body" }, { status: 400 })
+    return NextResponse.json({ error: "Provide a 'url' or paste raw HTML/text as 'html'" }, { status: 400 })
   }
   let parsedUrl: URL
   try {
@@ -260,7 +279,10 @@ export async function POST(req: Request) {
     })
     if (!res.ok) {
       return NextResponse.json(
-        { error: `Upstream returned ${res.status} ${res.statusText}` },
+        {
+          error: `Upstream returned ${res.status} ${res.statusText}`,
+          hint: "This site is blocking the scraper. Use the Easy Paste fallback below to paste the listing HTML or text directly.",
+        },
         { status: 502 },
       )
     }
@@ -271,7 +293,13 @@ export async function POST(req: Request) {
     html = await res.text()
   } catch (e) {
     const msg = e instanceof Error ? e.message : "fetch failed"
-    return NextResponse.json({ error: `Fetch failed: ${msg}` }, { status: 502 })
+    return NextResponse.json(
+      {
+        error: `Fetch failed: ${msg}`,
+        hint: "This site is blocking the scraper. Use the Easy Paste fallback below to paste the listing HTML or text directly.",
+      },
+      { status: 502 },
+    )
   }
 
   const parsed = parseHtml(url, html)

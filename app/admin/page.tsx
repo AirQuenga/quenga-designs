@@ -74,9 +74,9 @@ export default function AdminPage() {
               </div>
             </Link>
 
-            {/* Database Tools (Live Scrape + Audit) */}
+            {/* Property Data Hub (Import + Audit + Scrape) */}
             <Link
-              href="/admin/tools"
+              href="/admin/import"
               className="group relative bg-card border border-border rounded-3xl p-8 transition-all hover:border-muted-foreground/30 hover:shadow-xl cursor-pointer"
             >
               <div className="absolute top-8 right-8">
@@ -92,12 +92,12 @@ export default function AdminPage() {
               </div>
 
               <h3 className="text-2xl font-semibold mb-3 group-hover:text-primary transition-colors">
-                Database Tools
+                Property Data Hub
               </h3>
 
               <p className="text-muted-foreground leading-relaxed mb-6">
-                Live Scrape rental listings and run an automated audit across all 5,789+ property records.
-                Standardizes addresses, fills missing data, and repairs known typos.
+                Unified workspace for Excel/CSV import, automated audits across 5,789+ records, and URL scraping
+                with Easy Paste fallback.
               </p>
 
               <div className="grid grid-cols-2 gap-2 text-xs">

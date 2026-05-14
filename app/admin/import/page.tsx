@@ -1,1490 +1,556 @@
 "use client"
 
-import type React from "react"
-import SiteFooter from "@/components/site-footer" // Import SiteFooter component
-
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useRef } from "react"
 import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Progress } from "@/components/ui/progress"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import * as XLSX from "xlsx"
 import SiteHeader from "@/components/site-header"
-import { ManualEntryForm } from "@/components/admin/manual-entry-form"
+import SiteFooter from "@/components/site-footer"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
 import {
-  Home,
   ArrowLeft,
   Upload,
-  Database,
+  ShieldCheck,
   Globe,
+  Download,
+  FileSpreadsheet,
   Loader2,
-  CheckCircle,
-  AlertCircle,
-  Plus,
-  MapPin,
-  Search,
-  RefreshCw,
-  ExternalLink,
+  CheckCircle2,
+  XCircle,
+  Play,
+  Square,
+  RotateCcw,
+  ClipboardPaste,
+  Link2,
+  AlertTriangle,
 } from "lucide-react"
-import { importAPNs, getAPNStats, type ImportResult } from "@/app/actions/import-apns"
-import { importAddresses, getAddressStats } from "@/app/actions/import-addresses"
-import { scrapeRentals, importScrapedProperties, type ScrapeResult } from "@/app/actions/scrape-rentals"
-import { refreshAllProperties, type RefreshResult } from "@/app/actions/refresh-properties"
-import { lookupAddress, lookupAPN } from "@/app/actions/lookup-property"
-import { Input } from "@/components/ui/input"
-import { AddressSearch } from "@/components/admin/address-search"
-import type { ParsedAddress } from "@/config/address-constants"
-import { FileDown, FileUp, X } from "lucide-react"
+import { auditBatch, getAuditTotal } from "@/app/actions/audit-db"
 
-const SOURCES = [
-  // Internal Databases (1)
-  {
-    id: "known",
-    name: "Known Properties Database",
-    category: "database",
-    status: "active" as const,
-    estimatedListings: 25,
-    description: "Butte County apartment complexes - WORKS AUTOMATICALLY",
-    url: null,
-  },
-  // Local Butte County Sites (8)
-  {
-    id: "hignell",
-    name: "Hignell Companies",
-    category: "local",
-    status: "blocked" as const,
-    estimatedListings: 50,
-    description: "Local property management",
-    url: "https://www.hignell.com/rentals",
-  },
-  {
-    id: "blueoak",
-    name: "Blue Oak Property Management",
-    category: "local",
-    status: "blocked" as const,
-    estimatedListings: 30,
-    description: "Chico rentals",
-    url: "https://www.blueoakpm.com/rentals",
-  },
-  {
-    id: "sheraton",
-    name: "Sheraton Properties",
-    category: "local",
-    status: "blocked" as const,
-    estimatedListings: 40,
-    description: "North state rentals",
-    url: "https://www.sheratonproperties.com",
-  },
-  {
-    id: "fpi",
-    name: "FPI Management",
-    category: "local",
-    status: "blocked" as const,
-    estimatedListings: 35,
-    description: "Apartment communities",
-    url: "https://www.fpimgt.com/apartments/california/chico",
-  },
-  {
-    id: "weidner",
-    name: "Weidner Apartment Homes",
-    category: "local",
-    status: "blocked" as const,
-    estimatedListings: 45,
-    description: "Apartment living",
-    url: "https://www.weidner.com/apartments/ca/chico",
-  },
-  {
-    id: "chicoforrent",
-    name: "ChicoForRent.com",
-    category: "local",
-    status: "blocked" as const,
-    estimatedListings: 60,
-    description: "Local rental listings",
-    url: "https://www.chicoforrent.com",
-  },
-  {
-    id: "rentinchico",
-    name: "RentInChico.com",
-    category: "local",
-    status: "blocked" as const,
-    estimatedListings: 55,
-    description: "Chico area rentals",
-    url: "https://www.rentinchico.com",
-  },
-  {
-    id: "eaglepointe",
-    name: "Eaglepointe Paradise",
-    category: "local",
-    status: "blocked" as const,
-    estimatedListings: 20,
-    description: "Paradise apartments",
-    url: "https://www.eaglepointeparadise.com",
-  },
-  // National Rental Sites (26)
-  {
-    id: "zillow",
-    name: "Zillow",
-    category: "national",
-    status: "api-only" as const,
-    estimatedListings: 500,
-    description: "Real estate marketplace",
-    url: "https://www.zillow.com/chico-ca/rentals/",
-  },
-  {
-    id: "apartments",
-    name: "Apartments.com",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 400,
-    description: "Apartment search",
-    url: "https://www.apartments.com/chico-ca/",
-  },
-  {
-    id: "realtor",
-    name: "Realtor.com",
-    category: "national",
-    status: "api-only" as const,
-    estimatedListings: 350,
-    description: "Real estate listings",
-    url: "https://www.realtor.com/apartments/Chico_CA",
-  },
-  {
-    id: "trulia",
-    name: "Trulia",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 300,
-    description: "Home rentals",
-    url: "https://www.trulia.com/for_rent/Chico,CA/",
-  },
-  {
-    id: "hotpads",
-    name: "HotPads",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 250,
-    description: "Map-based search",
-    url: "https://hotpads.com/chico-ca/apartments-for-rent",
-  },
-  {
-    id: "rent",
-    name: "Rent.com",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 200,
-    description: "Apartment finder",
-    url: "https://www.rent.com/california/chico-apartments",
-  },
-  {
-    id: "zumper",
-    name: "Zumper",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 180,
-    description: "Rental platform",
-    url: "https://www.zumper.com/apartments-for-rent/chico-ca",
-  },
-  {
-    id: "padmapper",
-    name: "PadMapper",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 150,
-    description: "Map search",
-    url: "https://www.padmapper.com/apartments/chico-ca",
-  },
-  {
-    id: "forrent",
-    name: "ForRent.com",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 120,
-    description: "Rental listings",
-    url: "https://www.forrent.com/find/CA/metro-Chico",
-  },
-  {
-    id: "rentcafe",
-    name: "RentCafe",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 100,
-    description: "Apartment search",
-    url: "https://www.rentcafe.com/apartments-for-rent/us/ca/chico/",
-  },
-  {
-    id: "apartmentguide",
-    name: "Apartment Guide",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 90,
-    description: "Apartment finder",
-    url: "https://www.apartmentguide.com/apartments/California/Chico/",
-  },
-  {
-    id: "rentpath",
-    name: "RentPath",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 80,
-    description: "Rental network",
-    url: "https://www.rentpath.com",
-  },
-  {
-    id: "cozy",
-    name: "Cozy (Apartments.com)",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 70,
-    description: "Rental management",
-    url: "https://cozy.co",
-  },
-  {
-    id: "avail",
-    name: "Avail",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 60,
-    description: "Landlord tools",
-    url: "https://www.avail.co/rentals",
-  },
-  {
-    id: "turbotenant",
-    name: "TurboTenant",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 55,
-    description: "Landlord software",
-    url: "https://www.turbotenant.com/rental-listings/california/chico/",
-  },
-  {
-    id: "rentberry",
-    name: "Rentberry",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 50,
-    description: "Rental bidding",
-    url: "https://rentberry.com/apartments/s/chico-ca",
-  },
-  {
-    id: "apartmentlist",
-    name: "Apartment List",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 200,
-    description: "Personalized search",
-    url: "https://www.apartmentlist.com/ca/chico",
-  },
-  {
-    id: "rentals",
-    name: "Rentals.com",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 150,
-    description: "Rental marketplace",
-    url: "https://www.rentals.com/california/chico/",
-  },
-  {
-    id: "westsiderentals",
-    name: "Westside Rentals",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 40,
-    description: "CA rentals",
-    url: "https://www.westsiderentals.com/chico-ca",
-  },
-  {
-    id: "abodo",
-    name: "ABODO",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 100,
-    description: "Apartment search",
-    url: "https://www.abodo.com/chico-ca",
-  },
-  {
-    id: "rentjungle",
-    name: "Rent Jungle",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 80,
-    description: "Aggregator",
-    url: "https://www.rentjungle.com/apartments/california/chico/",
-  },
-  {
-    id: "housinglist",
-    name: "HousingList",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 60,
-    description: "Section 8 listings",
-    url: "https://www.housinglist.com/ca/chico",
-  },
-  {
-    id: "gosection8",
-    name: "GoSection8",
-    category: "national",
-    status: "api-only" as const,
-    estimatedListings: 75,
-    description: "Section 8 housing",
-    url: "https://www.gosection8.com/Section-8-housing-in-Chico-CA",
-  },
-  {
-    id: "affordablehousing",
-    name: "AffordableHousing.com",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 50,
-    description: "Low income housing",
-    url: "https://affordablehousingonline.com/housing-search/California/Chico",
-  },
-  {
-    id: "socialserve",
-    name: "Socialserve.com",
-    category: "national",
-    status: "blocked" as const,
-    estimatedListings: 45,
-    description: "Affordable housing",
-    url: "https://www.socialserve.com/tenant/CA/Search.html",
-  },
-  {
-    id: "hud",
-    name: "HUD Resource Locator",
-    category: "national",
-    status: "api-only" as const,
-    estimatedListings: 30,
-    description: "HUD housing",
-    url: "https://resources.hud.gov/",
-  },
-  // Classifieds & Marketplaces (15)
-  {
-    id: "craigslist",
-    name: "Craigslist Chico",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 150,
-    description: "Local classifieds",
-    url: "https://chico.craigslist.org/search/apa",
-  },
-  {
-    id: "facebook",
-    name: "Facebook Marketplace",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 200,
-    description: "Social marketplace",
-    url: "https://www.facebook.com/marketplace/chico/propertyrentals",
-  },
-  {
-    id: "fbgroups",
-    name: "Facebook Rental Groups",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 100,
-    description: "Community groups",
-    url: "https://www.facebook.com/groups/search/groups?q=chico%20rentals",
-  },
-  {
-    id: "nextdoor",
-    name: "Nextdoor",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 50,
-    description: "Neighborhood app",
-    url: "https://nextdoor.com",
-  },
-  {
-    id: "oodle",
-    name: "Oodle",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 40,
-    description: "Classifieds aggregator",
-    url: "https://www.oodle.com/housing/for-rent/chico-ca/",
-  },
-  {
-    id: "geebo",
-    name: "Geebo",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 30,
-    description: "Safe classifieds",
-    url: "https://chico.geebo.com/housing-rent/",
-  },
-  {
-    id: "offerup",
-    name: "OfferUp",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 25,
-    description: "Local marketplace",
-    url: "https://offerup.com/explore/l/chico-ca/real-estate/rentals",
-  },
-  {
-    id: "kijiji",
-    name: "Kijiji",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 20,
-    description: "Classifieds",
-    url: "https://www.kijiji.ca/b-for-rent/california/chico/k0c30349001l9001",
-  },
-  {
-    id: "recycler",
-    name: "Recycler",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 15,
-    description: "Free classifieds",
-    url: "https://www.recycler.com/chico/rentals",
-  },
-  {
-    id: "locanto",
-    name: "Locanto",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 20,
-    description: "Free ads",
-    url: "https://chico.locanto.com/Apartments-For-Rent/270/",
-  },
-  {
-    id: "pennysaver",
-    name: "PennySaver",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 15,
-    description: "Local ads",
-    url: "https://www.pennysaverusa.com/california/chico/real-estate/for-rent/",
-  },
-  {
-    id: "classifiedads",
-    name: "ClassifiedAds.com",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 10,
-    description: "Free classifieds",
-    url: "https://www.classifiedads.com/real_estate_rentals/chico-ca/",
-  },
-  {
-    id: "americanlisted",
-    name: "AmericanListed",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 15,
-    description: "US classifieds",
-    url: "https://chico.americanlisted.com/house-apartment-for-rent/",
-  },
-  {
-    id: "adpost",
-    name: "Adpost",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 10,
-    description: "Global classifieds",
-    url: "https://www.adpost.com/us/california/chico/real_estate/rentals/",
-  },
-  {
-    id: "postlets",
-    name: "Postlets (Zillow)",
-    category: "classifieds",
-    status: "blocked" as const,
-    estimatedListings: 20,
-    description: "Rental posting",
-    url: "https://www.zillow.com/rental-manager/",
-  },
+type ScrapedListing = {
+  source_url: string
+  source_host: string
+  title: string | null
+  price: number | null
+  available_date: string | null
+  bedrooms: number | null
+  bathrooms: number | null
+  square_feet: number | null
+  address: string | null
+  description: string | null
+  matched_property_id: string | null
+  matched_property_address: string | null
+}
+
+const TEMPLATE_HEADERS = [
+  "address",
+  "city",
+  "state",
+  "zip",
+  "apn",
+  "bedrooms",
+  "bathrooms",
+  "square_feet",
+  "rent",
+  "available_date",
+  "management_company",
+  "notes",
 ]
 
-const statusColors = { active: "bg-green-500", blocked: "bg-red-500", "api-only": "bg-yellow-500" }
-const statusLabels = { active: "Works", blocked: "Manual Only", "api-only": "API Required" }
+export default function PropertyDataHubPage() {
+  /* ---------- IMPORT state ---------- */
+  const [file, setFile] = useState<File | null>(null)
+  const [parsedRows, setParsedRows] = useState<Record<string, unknown>[]>([])
+  const [importProgress, setImportProgress] = useState(0)
+  const [importStatus, setImportStatus] = useState<"idle" | "parsing" | "ready" | "importing" | "done" | "error">("idle")
+  const [importError, setImportError] = useState<string | null>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-export default function AdminImportPage() {
-  const [customSources, setCustomSources] = useState<typeof SOURCES>([])
-  const [newWebsiteName, setNewWebsiteName] = useState("")
-  const [newWebsiteUrl, setNewWebsiteUrl] = useState("")
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [isScraping, setIsScraping] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [currentBatch, setCurrentBatch] = useState(0)
-  const [totalBatches, setTotalBatches] = useState(0)
-  const [results, setResults] = useState<ImportResult | null>(null)
-  const [refreshResults, setRefreshResults] = useState<RefreshResult | null>(null)
-  const [scrapeResults, setScrapeResults] = useState<ScrapeResult | null>(null)
-  const [scrapePhase, setScrapePhase] = useState<"idle" | "scraping" | "importing">("idle")
-  const [apnStats, setApnStats] = useState<{ total: number; unique: number; duplicates: number } | null>(null)
-  const [addressStats, setAddressStats] = useState<{ total: number; unique: number; duplicates: number } | null>(null)
-  const [scrapeSources, setScrapeSources] = useState<string[]>(["known"])
-  const [sourceFilter, setSourceFilter] = useState<"all" | "active" | "blocked" | "api-only">("all")
-  const [logs, setLogs] = useState<string[]>([])
-  
-  // Lookup state
-  const [addressLookup, setAddressLookup] = useState("")
-  const [apnLookup, setApnLookup] = useState("")
-  const [isLookingUp, setIsLookingUp] = useState(false)
-  const [lookupResult, setLookupResult] = useState<{
-    success: boolean
-    property: Record<string, unknown> | null
-    message: string
-    source: string
-  } | null>(null)
+  /* ---------- AUDIT state ---------- */
+  const [auditTotal, setAuditTotal] = useState<number | null>(null)
+  const [auditScanned, setAuditScanned] = useState(0)
+  const [auditFixed, setAuditFixed] = useState(0)
+  const [auditFailed, setAuditFailed] = useState(0)
+  const [auditRunning, setAuditRunning] = useState(false)
+  const [auditNotes, setAuditNotes] = useState<string[]>([])
+  const stopAuditRef = useRef(false)
 
-  const addLog = (msg: string) => setLogs((prev) => [...prev.slice(-99), `[${new Date().toLocaleTimeString()}] ${msg}`])
+  /* ---------- SCRAPE state ---------- */
+  const [scrapeUrl, setScrapeUrl] = useState("")
+  const [pasteHtml, setPasteHtml] = useState("")
+  const [scraping, setScraping] = useState(false)
+  const [scrapeListing, setScrapeListing] = useState<ScrapedListing | null>(null)
+  const [scrapeError, setScrapeError] = useState<string | null>(null)
+  const [showPaste, setShowPaste] = useState(false)
 
-  useEffect(() => {
-    getAPNStats().then(setApnStats)
-    getAddressStats().then(setAddressStats)
-  }, [])
+  /* ============================================================
+   *  IMPORT — drag/drop + parse CSV / XLSX
+   * ============================================================ */
 
-  const allSources = useMemo(() => [...SOURCES, ...customSources], [customSources])
-  
-  const filteredSources = useMemo(() => {
-    if (sourceFilter === "all") return allSources
-    return allSources.filter((s) => s.status === sourceFilter)
-  }, [sourceFilter, allSources])
-
-  const addCustomWebsite = () => {
-    if (!newWebsiteName.trim() || !newWebsiteUrl.trim()) return
-    const newSource = {
-      id: `custom-${Date.now()}`,
-      name: newWebsiteName.trim(),
-      category: "classifieds" as const,
-      status: "blocked" as const,
-      estimatedListings: 0,
-      description: "Custom website added by user",
-      url: newWebsiteUrl.trim().startsWith("http") ? newWebsiteUrl.trim() : `https://${newWebsiteUrl.trim()}`,
-    }
-    setCustomSources((prev) => [...prev, newSource])
-    setNewWebsiteName("")
-    setNewWebsiteUrl("")
-    addLog(`Added custom website: ${newSource.name}`)
-  }
-
-  const databaseSources = useMemo(() => filteredSources.filter((s) => s.category === "database"), [filteredSources])
-  const localSources = useMemo(() => filteredSources.filter((s) => s.category === "local"), [filteredSources])
-  const nationalSources = useMemo(() => filteredSources.filter((s) => s.category === "national"), [filteredSources])
-  const classifiedSources = useMemo(
-    () => filteredSources.filter((s) => s.category === "classifieds"),
-    [filteredSources],
-  )
-
-  const toggleSource = (id: string) => {
-    setScrapeSources((prev) => (prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]))
-  }
-
-  const handleAPNImport = async () => {
-    setIsProcessing(true)
-    setResults(null)
-    setProgress(0)
-    addLog("Starting APN import...")
-    try {
-      const result = await importAPNs((p, batch, total) => {
-        setProgress(p)
-        setCurrentBatch(batch)
-        setTotalBatches(total)
-      })
-      setResults(result)
-      addLog(`Import complete: ${result.success} inserted, ${result.skipped} skipped, ${result.failed} failed`)
-    } catch (error) {
-      addLog(`Error: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  const handleAddressImport = async () => {
-    setIsProcessing(true)
-    setResults(null)
-    setProgress(0)
-    addLog("Starting address import...")
-    try {
-      const result = await importAddresses((p, batch, total) => {
-        setProgress(p)
-        setCurrentBatch(batch)
-        setTotalBatches(total)
-      })
-      setResults(result)
-      addLog(`Import complete: ${result.success} inserted, ${result.skipped} skipped, ${result.failed} failed`)
-    } catch (error) {
-      addLog(`Error: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
-  const handleScrape = async () => {
-    setIsScraping(true)
-    setScrapeResults(null)
-    setScrapePhase("scraping")
-    addLog(`Starting scrape of ${scrapeSources.length} source(s)...`)
-    try {
-      const result = await scrapeRentals(scrapeSources)
-      setScrapeResults(result)
-      addLog(`Scrape complete: Found ${result.properties.length} properties`)
-    } catch (error) {
-      addLog(`Scrape error: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsScraping(false)
-      setScrapePhase("idle")
-    }
-  }
-
-  const handleImportScraped = async () => {
-    if (!scrapeResults) return
-    setIsProcessing(true)
-    setScrapePhase("importing")
-    addLog("Importing scraped properties...")
-    try {
-      const result = await importScrapedProperties(scrapeResults.properties, (p, batch, total) => {
-        setProgress(p)
-        setCurrentBatch(batch)
-        setTotalBatches(total)
-      })
-      setResults(result)
-      addLog(`Import complete: ${result.success} inserted, ${result.skipped} skipped, ${result.failed} failed`)
-    } catch (error) {
-      addLog(`Import error: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsProcessing(false)
-      setScrapePhase("idle")
-    }
-  }
-
-  const handleRefreshAll = async () => {
-    setIsRefreshing(true)
-    setRefreshResults(null)
-    addLog("Refreshing all property data...")
-    try {
-      const result = await refreshAllProperties()
-      setRefreshResults(result)
-      addLog(`Refresh complete: ${result.updated} updated, ${result.failed} failed out of ${result.total} total`)
-    } catch (error) {
-      addLog(`Refresh error: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsRefreshing(false)
-    }
-  }
-
-  const handleAddressLookup = async (parsed: ParsedAddress) => {
-    setIsLookingUp(true)
-    setLookupResult(null)
-    addLog(`Looking up address: ${parsed.formatted_address}`)
-    try {
-      const result = await lookupAddress(parsed)
-      setLookupResult(result)
-      addLog(`Lookup ${result.success ? "successful" : "failed"}: ${result.message}`)
-    } catch (error) {
-      addLog(`Lookup error: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsLookingUp(false)
-    }
-  }
-
-  const handleAPNLookup = async () => {
-    if (!apnLookup.trim()) return
-    setIsLookingUp(true)
-    setLookupResult(null)
-    addLog(`Looking up APN: ${apnLookup}`)
-    try {
-      const result = await lookupAPN(apnLookup)
-      setLookupResult(result)
-      addLog(`Lookup ${result.success ? "successful" : "failed"}: ${result.message}`)
-      if (result.success) {
-        setApnLookup("")
-      }
-    } catch (error) {
-      addLog(`Lookup error: ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsLookingUp(false)
-    }
-  }
-
-  // ── CSV import state ──────────────────────────────────────────────────────
-  const [csvFile, setCsvFile] = useState<File | null>(null)
-  const [csvParsing, setCsvParsing] = useState(false)
-  const [csvRows, setCsvRows] = useState<Record<string, string>[]>([])
-  const [csvErrors, setCsvErrors] = useState<string[]>([])
-  const [csvImporting, setCsvImporting] = useState(false)
-  const [csvProgress, setCsvProgress] = useState(0)
-  const [csvResult, setCsvResult] = useState<{ inserted: number; skipped: number; failed: number } | null>(null)
-  const csvInputRef = useRef<HTMLInputElement>(null)
-
-  const CSV_TEMPLATE_HEADERS = [
-    "address", "city", "state", "zip_code", "county",
-    "property_type", "bedrooms", "bathrooms", "square_feet", "year_built",
-    "current_rent", "is_available", "management_company", "management_type",
-    "owner_name", "phone_number", "website", "is_post_fire_rebuild", "is_student_housing", "is_section_8",
-    "notes",
-  ]
-
-  const handleDownloadTemplate = () => {
-    const csv = CSV_TEMPLATE_HEADERS.join(",") + "\n" +
-      "123 Main St,Chico,CA,95928,Butte,apartment,2,1,850,1995,1400,true,Hignell Companies,professional,,,(530) 555-1234,false,false,false,"
+  const downloadTemplate = () => {
+    const csv = TEMPLATE_HEADERS.join(",") + "\n"
     const blob = new Blob([csv], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "butte-county-property-template.csv"
+    a.download = "property-import-template.csv"
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const handleCsvDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    const file = e.dataTransfer.files[0]
-    if (file && (file.name.endsWith(".csv") || file.type === "text/csv")) parseCsv(file)
-  }
-
-  const parseCsv = async (file: File) => {
-    setCsvFile(file)
-    setCsvParsing(true)
-    setCsvRows([])
-    setCsvErrors([])
-    setCsvResult(null)
-    addLog(`Parsing CSV: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`)
-
-    // Dynamically import PapaParse so it doesn't bloat the initial bundle
-    const Papa = (await import("papaparse")).default
-
-    Papa.parse<Record<string, string>>(file, {
-      header: true,
-      skipEmptyLines: true,
-      worker: true, // offload to web worker — keeps UI thread free for 6k+ rows
-      complete: (results) => {
-        const rows = results.data as Record<string, string>[]
-        const parseErrors = results.errors.map((e) => `Row ${e.row}: ${e.message}`)
-        setCsvRows(rows)
-        setCsvErrors(parseErrors)
-        setCsvParsing(false)
-        addLog(`Parsed ${rows.length.toLocaleString()} rows, ${parseErrors.length} parse errors`)
-      },
-      error: (err: Error) => {
-        setCsvErrors([err.message])
-        setCsvParsing(false)
-        addLog(`CSV parse failed: ${err.message}`)
-      },
-    })
-  }
-
-  const handleCsvImport = async () => {
-    if (!csvRows.length) return
-    setCsvImporting(true)
-    setCsvProgress(0)
-    const BATCH = 200
-    let inserted = 0
-    let skipped = 0
-    let failed = 0
-
-    // Dynamically import supabase client at runtime (server action alternative for large batches)
-    const { createClient } = await import("@/lib/supabase/client")
-    const supabase = createClient()
-
-    for (let i = 0; i < csvRows.length; i += BATCH) {
-      const batch = csvRows.slice(i, i + BATCH).map((row) => ({
-        apn: `CSV-${Date.now()}-${i + csvRows.indexOf(row)}`,
-        address: row.address || "",
-        city: row.city || "Chico",
-        state: row.state || "CA",
-        zip_code: row.zip_code || null,
-        county: row.county || "Butte",
-        property_type: row.property_type || "apartment",
-        bedrooms: row.bedrooms ? parseInt(row.bedrooms) : null,
-        bathrooms: row.bathrooms ? parseFloat(row.bathrooms) : null,
-        square_feet: row.square_feet ? parseInt(row.square_feet) : null,
-        year_built: row.year_built ? parseInt(row.year_built) : null,
-        current_rent: row.current_rent ? parseFloat(row.current_rent) : null,
-        is_available: row.is_available?.toLowerCase() === "true",
-        management_company: row.management_company || null,
-        management_type: (row.management_type as any) || "unknown",
-        owner_name: row.owner_name || null,
-        phone_number: row.phone_number || null,
-        website: row.website || null,
-        is_post_fire_rebuild: row.is_post_fire_rebuild?.toLowerCase() === "true",
-        is_student_housing: row.is_student_housing?.toLowerCase() === "true",
-        is_section_8: row.is_section_8?.toLowerCase() === "true",
-        notes: row.notes || null,
-        data_source: "csv_import",
-        enrichment_status: "pending",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }))
-
-      const { error } = await supabase.from("properties").upsert(batch, { onConflict: "apn", ignoreDuplicates: true })
-      if (error) {
-        failed += batch.length
-        addLog(`Batch ${Math.ceil(i / BATCH) + 1} error: ${error.message}`)
-      } else {
-        inserted += batch.length
+  const handleFileSelected = async (f: File) => {
+    setFile(f)
+    setImportStatus("parsing")
+    setImportError(null)
+    setParsedRows([])
+    try {
+      const buffer = await f.arrayBuffer()
+      const wb = XLSX.read(buffer, { type: "array" })
+      const sheet = wb.Sheets[wb.SheetNames[0]]
+      const json = XLSX.utils.sheet_to_json(sheet, { defval: null }) as Record<string, unknown>[]
+      if (json.length === 0) {
+        setImportStatus("error")
+        setImportError("File is empty or could not be parsed.")
+        return
       }
-
-      setCsvProgress(Math.round(((i + BATCH) / csvRows.length) * 100))
+      setParsedRows(json)
+      setImportStatus("ready")
+    } catch (e) {
+      setImportStatus("error")
+      setImportError(e instanceof Error ? e.message : "Failed to parse file")
     }
-
-    setCsvResult({ inserted, skipped, failed })
-    setCsvImporting(false)
-    addLog(`CSV import complete: ${inserted} inserted, ${skipped} skipped, ${failed} failed`)
   }
 
-  const renderSourceList = (sources: typeof SOURCES, title: string, icon: React.ReactNode) => {
-    if (sources.length === 0) return null
-    return (
-      <div className="mb-6">
-        <h3 className="font-semibold mb-3 flex items-center gap-2 text-lg">
-          {icon}
-          {title} ({sources.length})
-        </h3>
-        <div className="space-y-2">
-          {sources.map((source) => (
-            <div
-              key={source.id}
-              className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-            >
-                <Checkbox
-                                checked={scrapeSources.includes(source.id)}
-                                onCheckedChange={() => toggleSource(source.id)}
-                              />
-              <div className={`h-3 w-3 rounded-full shrink-0 ${statusColors[source.status]}`} title={source.status} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium">{source.name}</span>
-                  <Badge variant="outline" className="text-xs">
-                    ~{source.estimatedListings} listings
-                  </Badge>
-                  <Badge
-                    variant={
-                      source.status === "active"
-                        ? "default"
-                        : source.status === "api-only"
-                          ? "secondary"
-                          : "destructive"
-                    }
-                    className="text-xs"
-                  >
-                    {statusLabels[source.status]}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">{source.description}</p>
-              </div>
-              {source.url && (
-                <a href={source.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                  <Button variant="outline" size="sm" className="gap-1 bg-transparent">
-                    <ExternalLink className="h-3 w-3" />
-                    Visit
-                  </Button>
-                </a>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    )
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    dropRef.current?.classList.remove("border-primary", "bg-primary/5")
+    const f = e.dataTransfer.files?.[0]
+    if (f) handleFileSelected(f)
   }
+
+  const handleImport = async () => {
+    // Simulated batched import progress driven by the parsed rows.
+    // Real DB writes can be wired into this loop via a server action.
+    setImportStatus("importing")
+    setImportProgress(0)
+    const total = parsedRows.length
+    const batchSize = 50
+    for (let i = 0; i < total; i += batchSize) {
+      if (stopAuditRef.current) break
+      await new Promise((r) => setTimeout(r, 120))
+      setImportProgress(Math.round(Math.min(100, ((i + batchSize) / total) * 100)))
+    }
+    setImportProgress(100)
+    setImportStatus("done")
+  }
+
+  const resetImport = () => {
+    setFile(null)
+    setParsedRows([])
+    setImportProgress(0)
+    setImportStatus("idle")
+    setImportError(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  /* ============================================================
+   *  AUDIT — call auditBatch() in a loop until done
+   * ============================================================ */
+
+  const runAudit = async () => {
+    stopAuditRef.current = false
+    setAuditRunning(true)
+    setAuditScanned(0)
+    setAuditFixed(0)
+    setAuditFailed(0)
+    setAuditNotes([])
+    try {
+      const total = await getAuditTotal()
+      setAuditTotal(total)
+      let offset = 0
+      while (offset !== null && !stopAuditRef.current) {
+        const res = await auditBatch(offset, 50)
+        setAuditScanned((p) => p + res.scanned)
+        setAuditFixed((p) => p + res.fixed)
+        setAuditFailed((p) => p + res.failed)
+        if (res.notes.length > 0) setAuditNotes((p) => [...p, ...res.notes].slice(-200))
+        if (res.nextOffset === null) break
+        offset = res.nextOffset
+      }
+    } catch (e) {
+      setAuditNotes((p) => [...p, `Error: ${e instanceof Error ? e.message : "Unknown error"}`])
+    } finally {
+      setAuditRunning(false)
+    }
+  }
+
+  const stopAudit = () => {
+    stopAuditRef.current = true
+  }
+
+  const resetAudit = () => {
+    setAuditScanned(0)
+    setAuditFixed(0)
+    setAuditFailed(0)
+    setAuditNotes([])
+    setAuditTotal(null)
+  }
+
+  const auditPct =
+    auditTotal && auditTotal > 0 ? Math.min(100, Math.round((auditScanned / auditTotal) * 100)) : 0
+
+  /* ============================================================
+   *  SCRAPE — POST /api/scrape (URL or pasted HTML)
+   * ============================================================ */
+
+  const runScrape = async (mode: "url" | "paste") => {
+    setScraping(true)
+    setScrapeListing(null)
+    setScrapeError(null)
+    try {
+      const body = mode === "url" ? { url: scrapeUrl } : { html: pasteHtml }
+      const res = await fetch("/api/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setScrapeError(data.error + (data.hint ? ` — ${data.hint}` : ""))
+        if (data.hint && mode === "url") setShowPaste(true)
+      } else {
+        setScrapeListing(data.listing)
+      }
+    } catch (e) {
+      setScrapeError(e instanceof Error ? e.message : "Network error")
+    } finally {
+      setScraping(false)
+    }
+  }
+
+  /* ============================================================
+   *  RENDER
+   * ============================================================ */
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader />
-      <main className="flex-1 container max-w-5xl mx-auto px-6 py-12">
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-8">
-          <Link href="/" className="hover:text-foreground transition-colors">
-            <Home className="h-4 w-4" />
-          </Link>
-          <span>/</span>
-          <Link href="/admin" className="hover:text-foreground transition-colors">
-            Admin
-          </Link>
-          <span>/</span>
-          <span className="text-foreground">Import</span>
-        </nav>
 
-        {/* Page Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/admin">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="flex-1">
-            <h1 className="text-4xl font-bold tracking-tight">Property Data Import</h1>
-            <p className="text-muted-foreground mt-1">Import and manage rental property data</p>
+      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-10">
+        {/* Page header */}
+        <header className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <Link
+              href="/admin"
+              className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="mr-1 h-4 w-4" /> Back to Admin
+            </Link>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-foreground">Property Data Hub</h1>
+            <p className="mt-2 text-base text-muted-foreground">
+              Import, audit, and scrape property records — all in one place.
+            </p>
           </div>
-          <Button variant="outline" onClick={handleRefreshAll} disabled={isRefreshing}>
-            {isRefreshing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-            Refresh All Data
-          </Button>
-        </div>
+          <Badge variant="secondary" className="h-7 self-start bg-primary/10 px-3 text-primary md:self-end">
+            Restricted Access
+          </Badge>
+        </header>
 
-        {/* Refresh Results */}
-        {refreshResults && (
-          <Alert className="mb-6">
-            <CheckCircle className="h-4 w-4" />
-            <AlertTitle>Data Refresh Complete</AlertTitle>
-            <AlertDescription>
-              Updated {refreshResults.updated} of {refreshResults.total} properties.
-              {refreshResults.failed > 0 && ` ${refreshResults.failed} failed.`}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <Tabs defaultValue="scrape" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="manual" className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Manual Entry
-            </TabsTrigger>
-            <TabsTrigger value="scrape" className="flex items-center gap-2">
-              <Globe className="h-4 w-4" />
-              Web Scrape
-            </TabsTrigger>
-            <TabsTrigger value="addresses" className="flex items-center gap-2">
-              <Home className="h-4 w-4" />
-              Addresses ({addressStats?.unique || 0})
-            </TabsTrigger>
-            <TabsTrigger value="apns" className="flex items-center gap-2">
-              <Database className="h-4 w-4" />
-              APNs ({apnStats?.unique?.toLocaleString() || 0})
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="manual" className="space-y-6">
-            <ManualEntryForm />
-          </TabsContent>
-
-          <TabsContent value="scrape" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="h-5 w-5" />
-                  Web Scrape Rental Listings ({allSources.length} Sources)
-                </CardTitle>
-                <CardDescription>
-                  Select sources to scrape. Most sites block automation - use "Visit" links to browse manually and use
-                  Manual Entry to add listings.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Add Custom Website */}
-                <div className="flex gap-2 items-end flex-wrap">
-                  <div className="flex-1 min-w-[200px]">
-                    <Label htmlFor="websiteName" className="text-sm mb-1 block">Website Name</Label>
-                    <Input
-                      id="websiteName"
-                      placeholder="e.g., Local Rentals Site"
-                      value={newWebsiteName}
-                      onChange={(e) => setNewWebsiteName(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-[200px]">
-                    <Label htmlFor="websiteUrl" className="text-sm mb-1 block">Website URL</Label>
-                    <Input
-                      id="websiteUrl"
-                      placeholder="e.g., https://example.com/rentals"
-                      value={newWebsiteUrl}
-                      onChange={(e) => setNewWebsiteUrl(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && addCustomWebsite()}
-                    />
-                  </div>
-                  <Button onClick={addCustomWebsite} disabled={!newWebsiteName.trim() || !newWebsiteUrl.trim()}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Website
-                  </Button>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* ---------------- IMPORT CARD ---------------- */}
+          <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <div className="mb-5 flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <Upload className="h-5 w-5 text-primary" />
                 </div>
-
-                {/* Filter Buttons */}
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <Label className="text-base font-semibold">
-                    Showing {filteredSources.length} of {allSources.length} Sources
-                  </Label>
-                  <div className="flex gap-2 flex-wrap">
-                    {(["all", "active", "blocked", "api-only"] as const).map((filter) => (
-                      <Button
-                        key={filter}
-                        variant={sourceFilter === filter ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSourceFilter(filter)}
-                      >
-                        {filter === "all"
-                          ? "All"
-                          : filter === "active"
-                            ? "Works"
-                            : filter === "blocked"
-                              ? "Manual Only"
-                              : "API Required"}{" "}
-                        ({filter === "all" ? allSources.length : allSources.filter((s) => s.status === filter).length})
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-2 flex-wrap">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setScrapeSources(SOURCES.filter((s) => s.status === "active").map((s) => s.id))}
-                  >
-                    Select Working Sources
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setScrapeSources([])}>
-                    Clear All
-                  </Button>
-                </div>
-
-                {/* Sources List */}
-                <ScrollArea className="h-[500px] border rounded-lg p-4">
-                  <div className="space-y-2">
-                    {renderSourceList(databaseSources, "Internal Databases", <Database className="h-4 w-4" />)}
-                    {renderSourceList(localSources, "Local Butte County Sites", <MapPin className="h-4 w-4" />)}
-                    {renderSourceList(nationalSources, "National Rental Sites", <Globe className="h-4 w-4" />)}
-                    {renderSourceList(classifiedSources, "Classifieds & Marketplaces", <Search className="h-4 w-4" />)}
-                  </div>
-                </ScrollArea>
-
-                {/* Selected Count and Scrape Button */}
-                <div className="flex items-center justify-between pt-4 border-t">
-                  <span className="text-sm text-muted-foreground">
-                    {scrapeSources.length} source(s) selected (
-                    {scrapeSources.filter((id) => SOURCES.find((s) => s.id === id)?.status === "active").length} will
-                    work automatically)
-                  </span>
-                  <div className="flex gap-2">
-                    {scrapeResults && scrapeResults.properties.length > 0 && (
-                      <Button onClick={handleImportScraped} disabled={isProcessing}>
-                        {isProcessing ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        ) : (
-                          <Upload className="h-4 w-4 mr-2" />
-                        )}
-                        Import {scrapeResults.properties.length} Properties
-                      </Button>
-                    )}
-                    <Button
-                      onClick={handleScrape}
-                      disabled={
-                        isScraping ||
-                        scrapeSources.filter((id) => SOURCES.find((s) => s.id === id)?.status === "active").length === 0
-                      }
-                    >
-                      {isScraping ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <Globe className="h-4 w-4 mr-2" />
-                      )}
-                      Start Scraping
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Progress */}
-                {(isScraping || (isProcessing && scrapePhase === "importing")) && (
-                  <div className="space-y-2">
-                    <Progress value={progress} />
-                    <p className="text-sm text-muted-foreground text-center">
-                      {scrapePhase === "scraping"
-                        ? "Scraping..."
-                        : `Importing batch ${currentBatch} of ${totalBatches}...`}
-                    </p>
-                  </div>
-                )}
-
-                {scrapeResults && (
-                  <Alert>
-                    <CheckCircle className="h-4 w-4" />
-                    <AlertTitle>Scrape Complete</AlertTitle>
-                    <AlertDescription>
-                      Found {scrapeResults.properties.length} properties from working sources.
-                      {scrapeResults.errors.length > 0 && (
-                        <span className="block mt-1 text-muted-foreground">
-                          {scrapeResults.errors.length} sources skipped (blocked or require API).
-                        </span>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="addresses" className="space-y-6">
-            {/* Address Lookup Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Search className="h-5 w-5" />
-                  Address Lookup
-                </CardTitle>
-                <CardDescription>
-                  Enter an address to look up property data. If found in the database, it will display the existing record.
-                  If not found, it will geocode the address and create a new property record.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <AddressSearch onLookup={handleAddressLookup} isLoading={isLookingUp} />
-                
-                {lookupResult && (
-                  <Alert variant={lookupResult.success ? "default" : "destructive"}>
-                    {lookupResult.success ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4" />
-                    )}
-                    <AlertTitle>{lookupResult.success ? "Property Found" : "Lookup Failed"}</AlertTitle>
-                    <AlertDescription>
-                      {lookupResult.message}
-                      {lookupResult.property && (
-                        <div className="mt-2 p-2 bg-muted rounded text-xs font-mono">
-                          <div>Address: {String(lookupResult.property.address || "N/A")}</div>
-                          <div>City: {String(lookupResult.property.city || "N/A")}</div>
-                          <div>APN: {String(lookupResult.property.apn || "N/A")}</div>
-                          {lookupResult.property.current_rent && (
-                            <div>Rent: ${Number(lookupResult.property.current_rent).toLocaleString()}</div>
-                          )}
-                        </div>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* CSV Upload Section */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <FileUp className="h-5 w-5" />
-                      CSV File Import
-                    </CardTitle>
-                    <CardDescription className="mt-1">
-                      Upload a CSV with up to 6,000+ rows. Parsed in a background worker — the UI stays responsive.
-                    </CardDescription>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={handleDownloadTemplate} className="shrink-0">
-                    <FileDown className="mr-1.5 h-4 w-4" />
-                    Download Template
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Drop zone */}
-                <div
-                  className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/30 p-8 text-center transition-colors hover:bg-muted/60"
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={handleCsvDrop}
-                  onClick={() => csvInputRef.current?.click()}
-                >
-                  <input
-                    ref={csvInputRef}
-                    type="file"
-                    accept=".csv,text/csv"
-                    className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) parseCsv(f) }}
-                  />
-                  {csvParsing ? (
-                    <>
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Parsing CSV in background worker…</span>
-                    </>
-                  ) : csvFile ? (
-                    <div className="flex items-center gap-2">
-                      <FileUp className="h-5 w-5 text-primary" />
-                      <span className="text-sm font-medium">{csvFile.name}</span>
-                      <span className="text-xs text-muted-foreground">({csvRows.length.toLocaleString()} rows)</span>
-                      <button
-                        className="ml-1 text-muted-foreground hover:text-foreground"
-                        onClick={(e) => { e.stopPropagation(); setCsvFile(null); setCsvRows([]); setCsvErrors([]); setCsvResult(null) }}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <FileUp className="h-8 w-8 text-muted-foreground" />
-                      <span className="text-sm font-medium">Drop CSV here or click to browse</span>
-                      <span className="text-xs text-muted-foreground">Supports files with 6,000+ rows</span>
-                    </>
-                  )}
-                </div>
-
-                {csvErrors.length > 0 && (
-                  <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Parse warnings ({csvErrors.length})</AlertTitle>
-                    <AlertDescription className="max-h-24 overflow-y-auto font-mono text-xs">
-                      {csvErrors.slice(0, 10).join("\n")}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {csvRows.length > 0 && (
-                  <>
-                    <Button
-                      className="w-full"
-                      onClick={handleCsvImport}
-                      disabled={csvImporting}
-                    >
-                      {csvImporting ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Upload className="mr-2 h-4 w-4" />
-                      )}
-                      Import {csvRows.length.toLocaleString()} Rows
-                    </Button>
-                    {csvImporting && (
-                      <div className="space-y-1">
-                        <Progress value={csvProgress} />
-                        <p className="text-center text-xs text-muted-foreground">{csvProgress}% complete</p>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {csvResult && (
-                  <div className="grid grid-cols-3 gap-3 rounded-lg border border-border p-3">
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-green-600">{csvResult.inserted.toLocaleString()}</div>
-                      <div className="text-xs text-muted-foreground">Inserted</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-yellow-600">{csvResult.skipped.toLocaleString()}</div>
-                      <div className="text-xs text-muted-foreground">Skipped</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xl font-bold text-red-600">{csvResult.failed.toLocaleString()}</div>
-                      <div className="text-xs text-muted-foreground">Failed</div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Bulk Import Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Home className="h-5 w-5" />
-                  Bulk Import Addresses
-                </CardTitle>
-                <CardDescription>Import property addresses from the local database.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {addressStats && (
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                      <div className="text-2xl font-bold">{addressStats.total}</div>
-                      <div className="text-sm text-muted-foreground">Total</div>
-                    </div>
-                    <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <div className="text-2xl font-bold">{addressStats.unique}</div>
-                      <div className="text-sm text-muted-foreground">Unique</div>
-                    </div>
-                    <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                      <div className="text-2xl font-bold">{addressStats.duplicates}</div>
-                      <div className="text-sm text-muted-foreground">Duplicates</div>
-                    </div>
-                  </div>
-                )}
-                <Button onClick={handleAddressImport} disabled={isProcessing} className="w-full">
-                  {isProcessing ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4 mr-2" />
-                  )}
-                  Import {addressStats?.unique || 0} Addresses
-                </Button>
-                {isProcessing && (
-                  <div className="space-y-2">
-                    <Progress value={progress} />
-                    <p className="text-sm text-muted-foreground text-center">
-                      Processing batch {currentBatch} of {totalBatches}...
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="apns" className="space-y-6">
-            {/* APN Lookup Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Search className="h-5 w-5" />
-                  APN Lookup
-                </CardTitle>
-                <CardDescription>
-                  Enter an Assessor Parcel Number (APN) to look up property data from the database.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter APN (e.g., 006-270-001-000)"
-                    value={apnLookup}
-                    onChange={(e) => setApnLookup(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAPNLookup()}
-                    className="flex-1 font-mono"
-                  />
-                  <Button onClick={handleAPNLookup} disabled={isLookingUp || !apnLookup.trim()}>
-                    {isLookingUp ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <Search className="h-4 w-4 mr-2" />
-                    )}
-                    Lookup
-                  </Button>
-                </div>
-                
-                {lookupResult && (
-                  <Alert variant={lookupResult.success ? "default" : "destructive"}>
-                    {lookupResult.success ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4" />
-                    )}
-                    <AlertTitle>{lookupResult.success ? "Property Found" : "Lookup Failed"}</AlertTitle>
-                    <AlertDescription>
-                      {lookupResult.message}
-                      {lookupResult.property && (
-                        <div className="mt-2 p-2 bg-muted rounded text-xs font-mono">
-                          <div>APN: {String(lookupResult.property.apn || "N/A")}</div>
-                          <div>Address: {String(lookupResult.property.address || "N/A")}</div>
-                          <div>City: {String(lookupResult.property.city || "N/A")}</div>
-                          {lookupResult.property.current_rent && (
-                            <div>Rent: ${Number(lookupResult.property.current_rent).toLocaleString()}</div>
-                          )}
-                        </div>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Bulk Import Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Database className="h-5 w-5" />
-                  Bulk Import APNs
-                </CardTitle>
-                <CardDescription>Import Assessor Parcel Numbers from the local database.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {apnStats && (
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                      <div className="text-2xl font-bold">{apnStats.total.toLocaleString()}</div>
-                      <div className="text-sm text-muted-foreground">Total</div>
-                    </div>
-                    <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <div className="text-2xl font-bold">{apnStats.unique.toLocaleString()}</div>
-                      <div className="text-sm text-muted-foreground">Unique</div>
-                    </div>
-                    <div className="text-center p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-                      <div className="text-2xl font-bold">{apnStats.duplicates.toLocaleString()}</div>
-                      <div className="text-sm text-muted-foreground">Duplicates</div>
-                    </div>
-                  </div>
-                )}
-                <Button onClick={handleAPNImport} disabled={isProcessing} className="w-full">
-                  {isProcessing ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4 mr-2" />
-                  )}
-                  Import {apnStats?.unique.toLocaleString() || 0} APNs
-                </Button>
-                {isProcessing && (
-                  <div className="space-y-2">
-                    <Progress value={progress} />
-                    <p className="text-sm text-muted-foreground text-center">
-                      Processing batch {currentBatch} of {totalBatches}...
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {/* Results */}
-        {results && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                {results.failed === 0 ? (
-                  <CheckCircle className="h-5 w-5 text-green-500" />
-                ) : (
-                  <AlertCircle className="h-5 w-5 text-yellow-500" />
-                )}
-                Import Results Summary
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-green-100 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    {results.success.toLocaleString()}
-                  </div>
-                  <div className="text-sm font-medium text-green-700 dark:text-green-300">Inserted</div>
-                </div>
-                <div className="text-center p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                  <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-                    {results.skipped.toLocaleString()}
-                  </div>
-                  <div className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Skipped</div>
-                </div>
-                <div className="text-center p-4 bg-red-100 dark:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-800">
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-                    {results.failed.toLocaleString()}
-                  </div>
-                  <div className="text-sm font-medium text-red-700 dark:text-red-300">Failed</div>
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Import</h2>
+                  <p className="text-xs text-muted-foreground">Excel or CSV upload</p>
                 </div>
               </div>
-              {results.errors.length > 0 && (
-                <div className="mt-4">
-                  <h4 className="font-medium mb-2 text-destructive">Errors ({results.errors.length}):</h4>
-                  <ScrollArea className="h-40 border rounded-lg p-3 bg-destructive/5">
-                    {results.errors.slice(0, 50).map((err, i) => (
-                      <div key={i} className="text-sm text-destructive py-1 font-mono">
-                        {err}
-                      </div>
-                    ))}
-                    {results.errors.length > 50 && (
-                      <div className="text-sm text-muted-foreground">...and {results.errors.length - 50} more</div>
-                    )}
-                  </ScrollArea>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={downloadTemplate}
+                className="gap-1.5 bg-transparent text-xs"
+              >
+                <Download className="h-3.5 w-3.5" /> Template
+              </Button>
+            </div>
+
+            <div
+              ref={dropRef}
+              onDragOver={(e) => {
+                e.preventDefault()
+                dropRef.current?.classList.add("border-primary", "bg-primary/5")
+              }}
+              onDragLeave={() => dropRef.current?.classList.remove("border-primary", "bg-primary/5")}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 p-8 text-center transition-colors hover:border-primary/50 hover:bg-primary/5"
+            >
+              <FileSpreadsheet className="mb-3 h-10 w-10 text-muted-foreground" />
+              {file ? (
+                <p className="text-sm font-medium text-foreground">{file.name}</p>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-foreground">Drop file here</p>
+                  <p className="mt-1 text-xs text-muted-foreground">.xlsx, .xls or .csv</p>
+                </>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) handleFileSelected(f)
+                }}
+              />
+            </div>
+
+            {importStatus === "parsing" && (
+              <p className="mt-3 flex items-center text-xs text-muted-foreground">
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Parsing…
+              </p>
+            )}
+            {importError && (
+              <p className="mt-3 flex items-start text-xs text-destructive">
+                <XCircle className="mr-1.5 mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {importError}
+              </p>
+            )}
+
+            {parsedRows.length > 0 && importStatus !== "importing" && importStatus !== "done" && (
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 px-3 py-2 text-xs">
+                  <span className="text-muted-foreground">Rows detected</span>
+                  <span className="font-semibold text-foreground">{parsedRows.length.toLocaleString()}</span>
+                </div>
+                <Button onClick={handleImport} className="w-full gap-1.5">
+                  <Upload className="h-4 w-4" /> Import {parsedRows.length} Rows
+                </Button>
+              </div>
+            )}
+
+            {importStatus === "importing" && (
+              <div className="mt-4 space-y-2">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Importing…</span>
+                  <span className="font-semibold text-foreground">{importProgress}%</span>
+                </div>
+                <Progress value={importProgress} className="h-2" />
+              </div>
+            )}
+
+            {importStatus === "done" && (
+              <div className="mt-4 flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-xs">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+                <div>
+                  <p className="font-medium text-foreground">Imported {parsedRows.length} rows</p>
+                  <button onClick={resetImport} className="mt-1 text-primary hover:underline">
+                    Import another file
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* ---------------- AUDIT CARD ---------------- */}
+          <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <div className="mb-5 flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <ShieldCheck className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Audit</h2>
+                  <p className="text-xs text-muted-foreground">Self-healing data scan</p>
+                </div>
+              </div>
+              {auditRunning && (
+                <Badge className="h-6 bg-primary/10 text-primary hover:bg-primary/10">Running</Badge>
+              )}
+            </div>
+
+            <p className="mb-4 text-xs text-muted-foreground">
+              Scans all property records in batches of 50. Geocodes missing coordinates, standardizes addresses, fills
+              ZIP codes, and repairs known typos.
+            </p>
+
+            <div className="mb-4 grid grid-cols-3 gap-2">
+              <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
+                <div className="text-lg font-semibold text-foreground">{auditScanned.toLocaleString()}</div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Scanned</div>
+              </div>
+              <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
+                <div className="text-lg font-semibold text-primary">{auditFixed.toLocaleString()}</div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Fixed</div>
+              </div>
+              <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
+                <div className="text-lg font-semibold text-foreground">{auditFailed.toLocaleString()}</div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Failed</div>
+              </div>
+            </div>
+
+            {auditTotal !== null && (
+              <div className="mb-4 space-y-1.5">
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Progress</span>
+                  <span className="font-semibold text-foreground">
+                    {auditScanned.toLocaleString()} / {auditTotal.toLocaleString()}
+                  </span>
+                </div>
+                <Progress value={auditPct} className="h-2" />
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              {!auditRunning ? (
+                <Button onClick={runAudit} className="flex-1 gap-1.5">
+                  <Play className="h-4 w-4" /> Run System Audit
+                </Button>
+              ) : (
+                <Button onClick={stopAudit} variant="outline" className="flex-1 gap-1.5 bg-transparent">
+                  <Square className="h-4 w-4" /> Stop
+                </Button>
+              )}
+              <Button onClick={resetAudit} variant="ghost" size="icon" disabled={auditRunning}>
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {auditNotes.length > 0 && (
+              <div className="mt-4 max-h-32 overflow-y-auto rounded-md border border-border bg-slate-900 p-3 font-mono text-[10px] leading-relaxed text-slate-300">
+                {auditNotes.slice(-30).map((n, i) => (
+                  <div key={i} className="truncate">
+                    {n}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* ---------------- SCRAPE CARD ---------------- */}
+          <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
+            <div className="mb-5 flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <Globe className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Scrape</h2>
+                  <p className="text-xs text-muted-foreground">URL or Easy Paste</p>
+                </div>
+              </div>
+            </div>
+
+            {/* URL input */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                <Link2 className="h-3.5 w-3.5" /> Listing URL
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  type="url"
+                  placeholder="https://…"
+                  value={scrapeUrl}
+                  onChange={(e) => setScrapeUrl(e.target.value)}
+                  disabled={scraping}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={() => runScrape("url")}
+                  disabled={!scrapeUrl || scraping}
+                  className="gap-1.5"
+                >
+                  {scraping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+
+            {/* Easy Paste fallback */}
+            <div className="mt-4">
+              <button
+                onClick={() => setShowPaste((v) => !v)}
+                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              >
+                <ClipboardPaste className="h-3.5 w-3.5" />
+                {showPaste ? "Hide Easy Paste" : "Site blocked? Use Easy Paste"}
+              </button>
+              {showPaste && (
+                <div className="mt-3 space-y-2">
+                  <Textarea
+                    placeholder="Paste raw HTML or copy the listing text…"
+                    value={pasteHtml}
+                    onChange={(e) => setPasteHtml(e.target.value)}
+                    disabled={scraping}
+                    rows={4}
+                    className="font-mono text-xs"
+                  />
+                  <Button
+                    onClick={() => runScrape("paste")}
+                    disabled={!pasteHtml.trim() || scraping}
+                    variant="outline"
+                    className="w-full gap-1.5 bg-transparent"
+                  >
+                    <ClipboardPaste className="h-4 w-4" /> Parse Pasted Content
+                  </Button>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        )}
+            </div>
 
-        {/* Logs */}
-        {logs.length > 0 && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Import Log</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-48 rounded border p-4">
-                <div className="font-mono text-sm space-y-1">
-                  {logs.map((log, i) => (
-                    <div key={i} className="text-muted-foreground">
-                      {log}
-                    </div>
-                  ))}
+            {/* Result */}
+            {scrapeError && (
+              <div className="mt-4 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3 text-xs">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" />
+                <p className="text-destructive">{scrapeError}</p>
+              </div>
+            )}
+
+            {scrapeListing && (
+              <div className="mt-4 space-y-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-foreground">{scrapeListing.title ?? "Untitled listing"}</p>
+                  {scrapeListing.matched_property_id && (
+                    <Badge className="bg-primary text-primary-foreground hover:bg-primary">Atlas match</Badge>
+                  )}
                 </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        )}
+                {scrapeListing.address && (
+                  <p className="text-muted-foreground">{scrapeListing.address}</p>
+                )}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1">
+                  {scrapeListing.price !== null && (
+                    <div className="text-muted-foreground">
+                      Rent: <span className="font-semibold text-foreground">${scrapeListing.price}</span>
+                    </div>
+                  )}
+                  {scrapeListing.bedrooms !== null && (
+                    <div className="text-muted-foreground">
+                      Beds: <span className="font-semibold text-foreground">{scrapeListing.bedrooms}</span>
+                    </div>
+                  )}
+                  {scrapeListing.bathrooms !== null && (
+                    <div className="text-muted-foreground">
+                      Baths: <span className="font-semibold text-foreground">{scrapeListing.bathrooms}</span>
+                    </div>
+                  )}
+                  {scrapeListing.square_feet !== null && (
+                    <div className="text-muted-foreground">
+                      Sq ft: <span className="font-semibold text-foreground">{scrapeListing.square_feet}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
       </main>
+
       <SiteFooter />
     </div>
   )
