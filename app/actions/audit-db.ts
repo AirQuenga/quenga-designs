@@ -24,7 +24,7 @@ import { createClient } from "@/lib/supabase/server"
 /* ------------------------------------------------------------------ types */
 
 export interface AuditLogLine {
-  level: "SUCCESS" | "ERROR" | "INFO"
+  level: "FIXED" | "SUCCESS" | "ERROR" | "WARN" | "INFO"
   message: string
 }
 
@@ -194,7 +194,7 @@ export async function auditBatch(offset = 0, batchSize = 25): Promise<AuditBatch
       failed: 0,
       nextOffset: null,
       total: totalRows,
-      logs: [{ level: "ERROR", message: `[ERROR] Batch query failed: ${error.message}` }],
+      logs: [{ level: "ERROR", message: `Batch query failed at offset ${offset}: ${error.message}` }],
     }
   }
 
@@ -243,8 +243,8 @@ export async function auditBatch(offset = 0, batchSize = 25): Promise<AuditBatch
           }
         } else {
           logs.push({
-            level: "ERROR",
-            message: `[ERROR] Failed to Geocode: ${label} (Address not found)`,
+            level: "WARN",
+            message: `Failed to Geocode: ${label} (Address not found)`,
           })
         }
       }
@@ -294,13 +294,13 @@ export async function auditBatch(offset = 0, batchSize = 25): Promise<AuditBatch
         failed++
         logs.push({
           level: "ERROR",
-          message: `[ERROR] Update failed for ${label}: ${updateError.message.slice(0, 120)}`,
+          message: `Database rejected update for ${label}: ${updateError.message.slice(0, 120)}`,
         })
       } else {
         fixed++
         logs.push({
-          level: "SUCCESS",
-          message: `[SUCCESS] Fixed ${label} (${reasons.join("; ")})`,
+          level: "FIXED",
+          message: `Database Updated — ${label} (${reasons.join("; ")})`,
         })
       }
     } catch (rowError) {
@@ -308,7 +308,7 @@ export async function auditBatch(offset = 0, batchSize = 25): Promise<AuditBatch
       const msg = rowError instanceof Error ? rowError.message : "Unknown error"
       logs.push({
         level: "ERROR",
-        message: `[ERROR] Unhandled exception on ${row.id.slice(0, 8)}: ${msg.slice(0, 120)}`,
+        message: `Unhandled exception on row ${row.id.slice(0, 8)}: ${msg.slice(0, 120)}`,
       })
       // Continue with the next row — never abort the batch.
     }
