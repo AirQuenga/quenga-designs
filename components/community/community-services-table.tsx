@@ -174,12 +174,12 @@ export function CommunityServicesTable() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="min-w-[140px]">Category</TableHead>
-                      <TableHead className="min-w-[140px]">Sub Category</TableHead>
+                      <TableHead className="min-w-[140px]">Sub-Category</TableHead>
                       <TableHead className="min-w-[200px]">Resource Name</TableHead>
                       <TableHead className="min-w-[140px]">Hours</TableHead>
                       <TableHead className="min-w-[220px]">Address</TableHead>
-                      <TableHead className="min-w-[140px]">Phone</TableHead>
-                      <TableHead className="min-w-[180px]">Other Contact</TableHead>
+                      <TableHead className="min-w-[140px]">Phone Number</TableHead>
+                      <TableHead className="min-w-[180px]">Other Contact Info</TableHead>
                       <TableHead className="min-w-[160px]">Website</TableHead>
                       <TableHead className="min-w-[240px]">Notes</TableHead>
                       <TableHead className="min-w-[200px]">Back Door Contacts</TableHead>
@@ -191,11 +191,11 @@ export function CommunityServicesTable() {
                         <TableRow key={service.id}>
                           <TableCell>
                             {idx === 0 ? (
-                              <Badge variant="secondary" className="font-medium">
+                              <Badge className="bg-slate-800 font-medium text-slate-50 hover:bg-slate-700">
                                 {category}
                               </Badge>
                             ) : (
-                              <span className="text-xs text-muted-foreground">{category}</span>
+                              <span className="text-xs text-slate-400">{category}</span>
                             )}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
@@ -208,7 +208,7 @@ export function CommunityServicesTable() {
                             {service.phone_number ? (
                               <a
                                 href={`tel:${service.phone_number}`}
-                                className="hover:underline"
+                                className="font-medium text-blue-900 hover:underline"
                               >
                                 {service.phone_number}
                               </a>
@@ -225,7 +225,7 @@ export function CommunityServicesTable() {
                                 href={service.website}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="hover:underline"
+                                className="font-medium text-blue-900 hover:underline"
                               >
                                 Visit
                               </a>
