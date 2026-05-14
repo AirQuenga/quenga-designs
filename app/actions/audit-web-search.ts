@@ -37,8 +37,8 @@ interface PropertyRowWide {
   bedrooms: number | null
   bathrooms: number | null
   square_feet: number | null
-  rent: number | null
-  available_date: string | null
+  current_rent: number | null
+  availability_date: string | null
   management_company: string | null
   notes: string | null
   property_name: string | null
@@ -137,7 +137,7 @@ export async function auditWebSearchBatch(
   const { data, error } = await supabase
     .from("properties")
     .select(
-      "id, address, city, state, zip_code, apn, bedrooms, bathrooms, square_feet, rent, available_date, management_company, notes, property_name",
+      "id, address, city, state, zip_code, apn, bedrooms, bathrooms, square_feet, current_rent, availability_date, management_company, notes, property_name",
     )
     .order("id", { ascending: true })
     .range(offset, offset + batchSize - 1)
@@ -201,8 +201,8 @@ export async function auditWebSearchBatch(
       setIfMissing("bedrooms", extracted.bedrooms, "beds")
       setIfMissing("bathrooms", extracted.bathrooms, "baths")
       setIfMissing("square_feet", extracted.square_feet, "sqft")
-      setIfMissing("rent", extracted.rent, "rent")
-      setIfMissing("available_date", extracted.available_date, "available_date")
+      setIfMissing("current_rent", extracted.rent, "rent")
+      setIfMissing("availability_date", extracted.available_date, "available_date")
       setIfMissing("management_company", extracted.management_company, "management")
       setIfMissing("notes", extracted.notes, "notes")
 
