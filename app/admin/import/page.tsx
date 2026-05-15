@@ -27,8 +27,8 @@ import {
   Link2,
   AlertTriangle,
 } from "lucide-react"
-import { auditBatch, getAuditTotal, type AuditLogLine } from "@/app/actions/audit-db"
-import { auditWebSearchBatch } from "@/app/actions/audit-web-search"
+import type { AuditLogLine } from "@/app/actions/audit-db"
+import { auditUnifiedBatch, getUnifiedAuditTotal } from "@/app/actions/audit-unified"
 import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 
 type ScrapedListing = {
@@ -72,7 +72,6 @@ export default function PropertyDataHubPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   /* ---------- AUDIT state ---------- */
-  const [auditMode, setAuditMode] = useState<"standard" | "web">("standard")
   const [auditTotal, setAuditTotal] = useState<number | null>(null)
   const [auditScanned, setAuditScanned] = useState(0)
   const [auditFixed, setAuditFixed] = useState(0)
@@ -220,19 +219,15 @@ export default function PropertyDataHubPage() {
     setAuditFixed(0)
     setAuditFailed(0)
 
-    const isWeb = auditMode === "web"
-    const source: LogSource = isWeb ? "WEB" : "AUDIT"
-    const runner = isWeb ? auditWebSearchBatch : auditBatch
+    const source: LogSource = "AUDIT"
 
     try {
-      const total = await getAuditTotal()
+      const total = await getUnifiedAuditTotal()
       setAuditTotal(total)
       appendLog(
         source,
         "INFO",
-        isWeb
-          ? `Starting Web-Search audit of ${total.toLocaleString()} records (batch size 25, live web lookups via AI Gateway)`
-          : `Starting Standard audit of ${total.toLocaleString()} records (batch size 25, geocoding + standardization)`,
+        `Starting System Audit of ${total.toLocaleString()} records (batch size 25 · Pass A typo/range repair → Pass B fuzzy web search → Pass C unified save)`,
       )
       let offset = 0
       // eslint-disable-next-line no-constant-condition
@@ -241,7 +236,7 @@ export default function PropertyDataHubPage() {
           appendLog(source, "WARN", `Audit stopped by user at row ${offset.toLocaleString()}`)
           break
         }
-        const res = await runner(offset, 25)
+        const res = await auditUnifiedBatch(offset, 25)
         setAuditScanned((p) => p + res.scanned)
         setAuditFixed((p) => p + res.fixed)
         setAuditFailed((p) => p + res.failed)
@@ -478,38 +473,11 @@ export default function PropertyDataHubPage() {
               )}
             </div>
 
-            {/* Mode selector */}
-            <div className="mb-4 grid grid-cols-2 gap-1 rounded-md border border-border bg-muted/30 p-1">
-              <button
-                type="button"
-                onClick={() => !auditRunning && setAuditMode("standard")}
-                disabled={auditRunning}
-                className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-                  auditMode === "standard"
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                } disabled:cursor-not-allowed`}
-              >
-                Standard
-              </button>
-              <button
-                type="button"
-                onClick={() => !auditRunning && setAuditMode("web")}
-                disabled={auditRunning}
-                className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-                  auditMode === "web"
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                } disabled:cursor-not-allowed`}
-              >
-                Web Search
-              </button>
-            </div>
-
             <p className="mb-4 text-xs text-muted-foreground">
-              {auditMode === "standard"
-                ? "Scans all property records in batches of 25. Geocodes missing coordinates, standardizes addresses, fills ZIP codes, and repairs known typos. Each fix is persisted to Supabase immediately."
-                : "Uses live web search via the AI Gateway to fill 12 fields per row: Address, City, State, Zip, APN, Bedrooms, Bathrooms, Square Feet, Rent, Available Date, Management Company, and Notes."}
+              Streams every record through a unified pipeline in batches of 25. Pass A intercepts ordinal typos
+              (<code>3th → 3rd</code>) and padded-zero anomalies (<code>114300 → 1143</code>). Pass B runs a strict
+              web-search lookup with an automatic wider-query fallback. Pass C maps the verified data onto the 12
+              schema columns and writes a single unified update per row.
             </p>
 
             <div className="mb-4 grid grid-cols-3 gap-2">
@@ -547,7 +515,7 @@ export default function PropertyDataHubPage() {
               {!auditRunning ? (
                 <Button onClick={runAudit} className="flex-1 gap-1.5">
                   <Play className="h-4 w-4" />
-                  {auditMode === "web" ? "Run Web-Search Audit" : "Run Standard Audit"}
+                  Run System Audit
                 </Button>
               ) : (
                 <Button onClick={stopAudit} variant="outline" className="flex-1 gap-1.5 bg-transparent">
