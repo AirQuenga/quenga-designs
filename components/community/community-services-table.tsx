@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   getCommunityServices,
   getCommunityServiceCategories,
-  getCommunityServiceAreas,
   type CommunityService,
 } from "@/app/actions/get-community-services"
 import { Button } from "@/components/ui/button"
@@ -18,60 +17,84 @@ import {
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, MapPin, Phone, Globe, Mail, Clock, ChevronLeft, ChevronRight } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Loader2, ChevronLeft, ChevronRight, Search } from "lucide-react"
+
+const ALL_VALUE = "__all__"
 
 export function CommunityServicesTable() {
   const [services, setServices] = useState<CommunityService[]>([])
   const [loading, setLoading] = useState(true)
   const [categories, setCategories] = useState<string[]>([])
-  const [serviceAreas, setServiceAreas] = useState<string[]>([])
   const [page, setPage] = useState(1)
-  const [pageSize] = useState(20)
+  const [pageSize] = useState(50)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
 
   const [filters, setFilters] = useState({
     category: "",
-    serviceArea: "",
     searchTerm: "",
   })
 
+  // Load categories once
   useEffect(() => {
+    getCommunityServiceCategories().then(setCategories)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
     const loadData = async () => {
       setLoading(true)
-      const [servicesResult, categoriesResult, areasResult] = await Promise.all([
-        getCommunityServices(filters === {} ? undefined : filters, page, pageSize),
-        getCommunityServiceCategories(),
-        getCommunityServiceAreas(),
-      ])
-
-      setServices(servicesResult.services)
-      setTotal(servicesResult.total)
-      setTotalPages(servicesResult.totalPages)
-      setCategories(categoriesResult)
-      setServiceAreas(areasResult)
+      const activeFilters = {
+        category: filters.category || undefined,
+        searchTerm: filters.searchTerm || undefined,
+      }
+      const result = await getCommunityServices(activeFilters, page, pageSize)
+      if (cancelled) return
+      setServices(result.services)
+      setTotal(result.total)
+      setTotalPages(result.totalPages)
       setLoading(false)
     }
 
     loadData()
+    return () => {
+      cancelled = true
+    }
   }, [filters, page, pageSize])
 
-  const handleFilterChange = (key: string, value: string) => {
-    setFilters((prev) => ({ ...prev, [key]: value }))
-    setPage(1) // Reset to first page when filters change
-  }
-
-  const handleClearFilters = () => {
-    setFilters({ category: "", serviceArea: "", searchTerm: "" })
+  const handleSearchChange = (value: string) => {
+    setFilters((prev) => ({ ...prev, searchTerm: value }))
     setPage(1)
   }
 
-  const formatCategoryLabel = (cat: string) => {
-    return cat
-      .split("_")
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(" ")
+  const handleCategoryChange = (value: string) => {
+    setFilters((prev) => ({ ...prev, category: value === ALL_VALUE ? "" : value }))
+    setPage(1)
   }
+
+  const handleClearFilters = () => {
+    setFilters({ category: "", searchTerm: "" })
+    setPage(1)
+  }
+
+  const hasActiveFilters = filters.category || filters.searchTerm
+
+  // Group rows by category for visual breaks
+  const groupedByCategory = useMemo(() => {
+    const groups: Record<string, CommunityService[]> = {}
+    for (const s of services) {
+      ;(groups[s.category] ??= []).push(s)
+    }
+    return groups
+  }, [services])
 
   return (
     <div className="space-y-6">
@@ -79,51 +102,39 @@ export function CommunityServicesTable() {
       <Card>
         <CardHeader>
           <CardTitle>Find Community Services</CardTitle>
-          <CardDescription>Browse and filter services by category, location, and keywords</CardDescription>
+          <CardDescription>
+            Browse resources by category or search by name, address, or keyword.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            {/* Search */}
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <label className="text-sm font-medium">Search</label>
-              <Input
-                placeholder="Search by name or description"
-                value={filters.searchTerm}
-                onChange={(e) => handleFilterChange("searchTerm", e.target.value)}
-                className="h-9"
-              />
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search resource, address, or keyword"
+                  value={filters.searchTerm}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="h-9 pl-9"
+                />
+              </div>
             </div>
 
-            {/* Category */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Category</label>
-              <Select value={filters.category} onValueChange={(v) => handleFilterChange("category", v)}>
+              <Select
+                value={filters.category || ALL_VALUE}
+                onValueChange={handleCategoryChange}
+              >
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="All categories" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All categories</SelectItem>
+                  <SelectItem value={ALL_VALUE}>All categories</SelectItem>
                   {categories.map((cat) => (
                     <SelectItem key={cat} value={cat}>
-                      {formatCategoryLabel(cat)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Service Area */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Service Area</label>
-              <Select value={filters.serviceArea} onValueChange={(v) => handleFilterChange("serviceArea", v)}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="All areas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All areas</SelectItem>
-                  {serviceAreas.map((area) => (
-                    <SelectItem key={area} value={area}>
-                      {area}
+                      {cat}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -131,12 +142,11 @@ export function CommunityServicesTable() {
             </div>
           </div>
 
-          {/* Clear button */}
-          {(filters.category || filters.serviceArea || filters.searchTerm) && (
+          {hasActiveFilters ? (
             <Button variant="outline" size="sm" onClick={handleClearFilters}>
               Clear Filters
             </Button>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
@@ -144,8 +154,8 @@ export function CommunityServicesTable() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>Services ({total.toLocaleString()})</span>
-            {loading && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+            <span>Resources ({total.toLocaleString()})</span>
+            {loading ? <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /> : null}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -159,52 +169,84 @@ export function CommunityServicesTable() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Service Cards Grid */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {services.map((service) => (
-                  <Card key={service.id} className="bg-muted/30">
-                    <CardContent className="pt-4">
-                      <div className="space-y-2">
-                        <div className="font-medium">{service.name}</div>
-                        <Badge variant="outline" className="w-fit">
-                          {formatCategoryLabel(service.category)}
-                        </Badge>
-                        {service.address && (
-                          <div className="flex items-start gap-2 text-sm">
-                            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span>{service.address}</span>
-                          </div>
-                        )}
-                        {service.phone_number && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <Phone className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <a href={`tel:${service.phone_number}`} className="hover:underline">
-                              {service.phone_number}
-                            </a>
-                          </div>
-                        )}
-                        {service.hours && (
-                          <div className="flex items-start gap-2 text-sm">
-                            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                            <span>{service.hours}</span>
-                          </div>
-                        )}
-                        {service.website && (
-                          <div className="flex items-center gap-2 text-sm">
-                            <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <a href={service.website} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                              Visit website
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="overflow-x-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[140px]">Category</TableHead>
+                      <TableHead className="min-w-[140px]">Sub-Category</TableHead>
+                      <TableHead className="min-w-[200px]">Resource Name</TableHead>
+                      <TableHead className="min-w-[140px]">Hours</TableHead>
+                      <TableHead className="min-w-[220px]">Address</TableHead>
+                      <TableHead className="min-w-[140px]">Phone Number</TableHead>
+                      <TableHead className="min-w-[180px]">Other Contact Info</TableHead>
+                      <TableHead className="min-w-[160px]">Website</TableHead>
+                      <TableHead className="min-w-[240px]">Notes</TableHead>
+                      <TableHead className="min-w-[200px]">Back Door Contacts</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(groupedByCategory).map(([category, rows]) =>
+                      rows.map((service, idx) => (
+                        <TableRow key={service.id}>
+                          <TableCell>
+                            {idx === 0 ? (
+                              <Badge className="bg-slate-800 font-medium text-slate-50 hover:bg-slate-700">
+                                {category}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-slate-400">{category}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {service.sub_category || "—"}
+                          </TableCell>
+                          <TableCell className="font-medium">{service.resource_name}</TableCell>
+                          <TableCell className="text-sm">{service.hours || "—"}</TableCell>
+                          <TableCell className="text-sm">{service.address || "—"}</TableCell>
+                          <TableCell className="text-sm">
+                            {service.phone_number ? (
+                              <a
+                                href={`tel:${service.phone_number}`}
+                                className="font-medium text-blue-900 hover:underline"
+                              >
+                                {service.phone_number}
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {service.other_contact_info || "—"}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {service.website ? (
+                              <a
+                                href={service.website}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-blue-900 hover:underline"
+                              >
+                                Visit
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                          <TableCell className="max-w-md whitespace-pre-wrap text-sm text-muted-foreground">
+                            {service.notes || "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {service.back_door_contacts || "—"}
+                          </TableCell>
+                        </TableRow>
+                      )),
+                    )}
+                  </TableBody>
+                </Table>
               </div>
 
-              {/* Pagination */}
-              {totalPages > 1 && (
+              {totalPages > 1 ? (
                 <div className="mt-6 flex items-center justify-center gap-2">
                   <Button
                     variant="outline"
@@ -226,7 +268,7 @@ export function CommunityServicesTable() {
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </CardContent>

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Settings, Database, FileUp, Users, Shield, Activity } from "lucide-react"
+import { Settings, Database, FileUp, Users, Shield, Activity, ShieldCheck } from "lucide-react"
 import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
 import { PageHeader } from "@/components/page-header"
@@ -70,6 +70,42 @@ export default function AdminPage() {
                 </div>
                 <div className="text-muted-foreground">
                   Classifieds: <span className="font-semibold">{sourceCategories.classifieds}</span>
+                </div>
+              </div>
+            </Link>
+
+            {/* Property Data Hub (Import + Audit + Scrape) */}
+            <Link
+              href="/admin/import"
+              className="group relative bg-card border border-border rounded-3xl p-8 transition-all hover:border-muted-foreground/30 hover:shadow-xl cursor-pointer"
+            >
+              <div className="absolute top-8 right-8">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                  Self-Healing
+                </span>
+              </div>
+
+              <div className="mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                  <ShieldCheck className="h-7 w-7 text-primary" />
+                </div>
+              </div>
+
+              <h3 className="text-2xl font-semibold mb-3 group-hover:text-primary transition-colors">
+                Property Data Hub
+              </h3>
+
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                Unified workspace for Excel/CSV import, automated audits across 5,789+ records, and URL scraping
+                with Easy Paste fallback.
+              </p>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="text-muted-foreground">
+                  Batch Size: <span className="font-semibold text-foreground">50</span>
+                </div>
+                <div className="text-muted-foreground">
+                  Geocoding: <span className="font-semibold text-foreground">Mapbox</span>
                 </div>
               </div>
             </Link>

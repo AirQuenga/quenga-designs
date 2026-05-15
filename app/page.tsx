@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, HeartHandshake, Phone, Clock, MapPin } from "lucide-react"
 import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
 
@@ -69,8 +69,8 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            <div className="relative aspect-video rounded-3xl overflow-hidden bg-gradient-to-br from-blue-500 to-purple-600 shadow-2xl">
-              <div className="absolute inset-0 flex items-center justify-center text-white/20 text-9xl font-bold">
+            <div className="relative aspect-video rounded-xl overflow-hidden bg-gradient-to-br from-primary to-slate-700 shadow-xl border border-border">
+              <div className="absolute inset-0 flex items-center justify-center text-primary-foreground/20 text-9xl font-bold tracking-tight">
                 MAP
               </div>
             </div>
@@ -78,8 +78,100 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Feature Grid */}
+      {/* Feature Section - Community Services */}
       <section className="py-20 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-16 items-center">
+            {/* Visual preview — order on the left for variety */}
+            <div className="relative order-2 md:order-1">
+              <div className="aspect-video rounded-xl overflow-hidden bg-card border border-border shadow-xl">
+                {/* Mock directory card */}
+                <div className="flex h-full flex-col">
+                  <div className="flex items-center justify-between border-b border-border bg-primary px-5 py-3">
+                    <div className="flex items-center gap-2 text-primary-foreground">
+                      <HeartHandshake className="h-4 w-4" />
+                      <span className="text-sm font-semibold tracking-wide">Community Services Directory</span>
+                    </div>
+                    <span className="rounded-full bg-primary-foreground/15 px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
+                      Butte County
+                    </span>
+                  </div>
+                  <div className="grid flex-1 grid-cols-2 gap-3 p-5">
+                    {[
+                      { cat: "Food", name: "Jesus Center", meta: "Mon–Fri 8a–4p" },
+                      { cat: "Housing", name: "Torres Shelter", meta: "24/7 Intake" },
+                      { cat: "Mental Health", name: "BH Crisis Line", meta: "(800) 334-6622" },
+                      { cat: "Legal", name: "Legal Services NorCal", meta: "Free civil aid" },
+                    ].map((item) => (
+                      <div
+                        key={item.name}
+                        className="flex flex-col gap-1 rounded-lg border border-border bg-background p-3"
+                      >
+                        <span className="inline-flex w-fit items-center rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground">
+                          {item.cat}
+                        </span>
+                        <span className="text-sm font-semibold text-foreground">{item.name}</span>
+                        <span className="text-xs text-muted-foreground">{item.meta}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Copy */}
+            <div className="order-1 md:order-2 space-y-6">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <HeartHandshake className="h-5 w-5 text-primary" />
+              </div>
+              <h2 className="text-5xl font-semibold tracking-tight">
+                Community Services
+                <br />
+                Directory
+              </h2>
+              <p className="text-xl text-muted-foreground leading-relaxed">
+                Connect Butte County residents to mental health, food, housing, legal aid, job training, and
+                healthcare resources in one searchable directory.
+              </p>
+              <Link
+                href="/community-services"
+                className="inline-flex items-center text-primary hover:underline text-lg font-medium transition-colors"
+              >
+                Browse Resources
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
+              <div className="flex gap-8 pt-4">
+                <div>
+                  <div className="text-4xl font-semibold">200+</div>
+                  <div className="text-sm text-muted-foreground">Services</div>
+                </div>
+                <div>
+                  <div className="text-4xl font-semibold">12</div>
+                  <div className="text-sm text-muted-foreground">Categories</div>
+                </div>
+                <div>
+                  <div className="text-4xl font-semibold">24/7</div>
+                  <div className="text-sm text-muted-foreground">Access</div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-2 pt-2 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <Phone className="h-4 w-4 text-primary" /> Direct phone
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 text-primary" /> Hours of operation
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4 text-primary" /> Addresses
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Feature Grid */}
+      <section className="py-20 px-6 bg-secondary/30">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl sm:text-5xl font-semibold tracking-tight mb-4">Designed to empower.</h2>
@@ -87,8 +179,8 @@ export default function Home() {
           </div>
           <div className="grid md:grid-cols-3 gap-12">
             <div className="space-y-3">
-              <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center transition-colors">
-                <div className="w-6 h-6 rounded-full bg-blue-500" />
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center transition-colors">
+                <div className="w-6 h-6 rounded-full bg-primary" />
               </div>
               <h3 className="text-2xl font-semibold">Instant Efficiency</h3>
               <p className="text-muted-foreground leading-relaxed">
@@ -96,8 +188,8 @@ export default function Home() {
               </p>
             </div>
             <div className="space-y-3">
-              <div className="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center transition-colors">
-                <div className="w-6 h-6 rounded-full bg-purple-500" />
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center transition-colors">
+                <div className="w-6 h-6 rounded-full bg-primary/70" />
               </div>
               <h3 className="text-2xl font-semibold">Work Smarter</h3>
               <p className="text-muted-foreground leading-relaxed">
@@ -105,8 +197,8 @@ export default function Home() {
               </p>
             </div>
             <div className="space-y-3">
-              <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center transition-colors">
-                <div className="w-6 h-6 rounded-full bg-green-500" />
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center transition-colors">
+                <div className="w-6 h-6 rounded-full bg-slate-500" />
               </div>
               <h3 className="text-2xl font-semibold">Always Reliable</h3>
               <p className="text-muted-foreground leading-relaxed">

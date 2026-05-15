@@ -25,7 +25,7 @@ export default function CommunityServicesPage() {
       <main className="flex-1">
         <div className="container mx-auto max-w-6xl px-6 py-12">
           <PageHeader
-            title="Community Services Directory"
+            title="Community Services"
             description="Find mental health, food banks, legal aid, job training, housing support, and other community resources throughout Butte County."
           />
 
