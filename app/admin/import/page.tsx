@@ -327,9 +327,9 @@ export default function PropertyDataHubPage() {
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader />
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-10">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
         {/* Page header */}
-        <header className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <header className="mb-6 flex flex-col gap-3 sm:mb-10 sm:gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <Link
               href="/admin"
@@ -337,8 +337,10 @@ export default function PropertyDataHubPage() {
             >
               <ArrowLeft className="mr-1 h-4 w-4" /> Back to Admin
             </Link>
-            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-foreground">Property Data Hub</h1>
-            <p className="mt-2 text-base text-muted-foreground">
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl lg:text-4xl">
+              Property Data Hub
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">
               Import, audit, and scrape property records — all in one place.
             </p>
           </div>
@@ -347,16 +349,16 @@ export default function PropertyDataHubPage() {
           </Badge>
         </header>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
           {/* ---------------- IMPORT CARD ---------------- */}
-          <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
-            <div className="mb-5 flex items-start justify-between">
+          <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
+            <div className="mb-4 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <Upload className="h-5 w-5 text-primary" />
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:h-10 sm:w-10">
+                  <Upload className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">Import</h2>
+                  <h2 className="text-base font-semibold text-foreground sm:text-lg">Import</h2>
                   <p className="text-xs text-muted-foreground">Excel or CSV upload</p>
                 </div>
               </div>
@@ -364,7 +366,7 @@ export default function PropertyDataHubPage() {
                 variant="outline"
                 size="sm"
                 onClick={downloadTemplate}
-                className="gap-1.5 bg-transparent text-xs"
+                className="w-full gap-1.5 bg-transparent text-xs sm:w-auto"
               >
                 <Download className="h-3.5 w-3.5" /> Template
               </Button>
@@ -379,9 +381,9 @@ export default function PropertyDataHubPage() {
               onDragLeave={() => dropRef.current?.classList.remove("border-primary", "bg-primary/5")}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 p-8 text-center transition-colors hover:border-primary/50 hover:bg-primary/5"
+              className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30 p-6 text-center transition-colors hover:border-primary/50 hover:bg-primary/5 sm:min-h-[140px] sm:p-8"
             >
-              <FileSpreadsheet className="mb-3 h-10 w-10 text-muted-foreground" />
+              <FileSpreadsheet className="mb-2 h-8 w-8 text-muted-foreground sm:mb-3 sm:h-10 sm:w-10" />
               {file ? (
                 <p className="text-sm font-medium text-foreground">{file.name}</p>
               ) : (
@@ -457,14 +459,14 @@ export default function PropertyDataHubPage() {
           </section>
 
           {/* ---------------- AUDIT CARD ---------------- */}
-          <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
-            <div className="mb-5 flex items-start justify-between">
+          <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
+            <div className="mb-4 flex items-start justify-between sm:mb-5">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <ShieldCheck className="h-5 w-5 text-primary" />
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:h-10 sm:w-10">
+                  <ShieldCheck className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">Audit</h2>
+                  <h2 className="text-base font-semibold text-foreground sm:text-lg">Audit</h2>
                   <p className="text-xs text-muted-foreground">Self-healing data scan</p>
                 </div>
               </div>
@@ -473,29 +475,27 @@ export default function PropertyDataHubPage() {
               )}
             </div>
 
-            <p className="mb-4 text-xs text-muted-foreground">
+            <p className="mb-3 text-xs text-muted-foreground sm:mb-4">
               Streams every record through a unified pipeline in batches of 25. Pass A intercepts ordinal typos
-              (<code>3th → 3rd</code>) and padded-zero anomalies (<code>114300 → 1143</code>). Pass B runs a strict
-              web-search lookup with an automatic wider-query fallback. Pass C maps the verified data onto the 12
-              schema columns and writes a single unified update per row.
+              (<code className="text-[10px]">3th → 3rd</code>) and padded-zero anomalies. Pass B runs a web-search lookup. Pass C writes a single unified update per row.
             </p>
 
-            <div className="mb-4 grid grid-cols-3 gap-2">
-              <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
-                <div className="text-lg font-semibold text-foreground">{auditScanned.toLocaleString()}</div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Total Scanned</div>
+            <div className="mb-3 grid grid-cols-3 gap-1.5 sm:mb-4 sm:gap-2">
+              <div className="rounded-md border border-border bg-muted/30 p-1.5 text-center sm:p-2">
+                <div className="text-base font-semibold text-foreground sm:text-lg">{auditScanned.toLocaleString()}</div>
+                <div className="text-[9px] uppercase tracking-wide text-muted-foreground sm:text-[10px]">Scanned</div>
               </div>
-              <div className="rounded-md border border-border bg-emerald-50 p-2 text-center dark:bg-emerald-950/30">
-                <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">
+              <div className="rounded-md border border-border bg-emerald-50 p-1.5 text-center dark:bg-emerald-950/30 sm:p-2">
+                <div className="text-base font-semibold text-emerald-700 dark:text-emerald-400 sm:text-lg">
                   {auditFixed.toLocaleString()}
                 </div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Fixes Applied</div>
+                <div className="text-[9px] uppercase tracking-wide text-muted-foreground sm:text-[10px]">Fixed</div>
               </div>
-              <div className="rounded-md border border-border bg-red-50 p-2 text-center dark:bg-red-950/30">
-                <div className="text-lg font-semibold text-red-700 dark:text-red-400">
+              <div className="rounded-md border border-border bg-red-50 p-1.5 text-center dark:bg-red-950/30 sm:p-2">
+                <div className="text-base font-semibold text-red-700 dark:text-red-400 sm:text-lg">
                   {auditFailed.toLocaleString()}
                 </div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Errors Found</div>
+                <div className="text-[9px] uppercase tracking-wide text-muted-foreground sm:text-[10px]">Errors</div>
               </div>
             </div>
 
@@ -530,14 +530,14 @@ export default function PropertyDataHubPage() {
           </section>
 
           {/* ---------------- SCRAPE CARD ---------------- */}
-          <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
-            <div className="mb-5 flex items-start justify-between">
+          <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6 md:col-span-2 lg:col-span-1">
+            <div className="mb-4 flex items-start justify-between sm:mb-5">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <Globe className="h-5 w-5 text-primary" />
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:h-10 sm:w-10">
+                  <Globe className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">Scrape</h2>
+                  <h2 className="text-base font-semibold text-foreground sm:text-lg">Scrape</h2>
                   <p className="text-xs text-muted-foreground">URL or Easy Paste</p>
                 </div>
               </div>
@@ -548,21 +548,22 @@ export default function PropertyDataHubPage() {
               <label className="flex items-center gap-1.5 text-xs font-medium text-foreground">
                 <Link2 className="h-3.5 w-3.5" /> Listing URL
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   type="url"
                   placeholder="https://…"
                   value={scrapeUrl}
                   onChange={(e) => setScrapeUrl(e.target.value)}
                   disabled={scraping}
-                  className="flex-1"
+                  className="min-h-[44px] flex-1 text-base sm:min-h-0 sm:text-sm"
                 />
                 <Button
                   onClick={() => runScrape("url")}
                   disabled={!scrapeUrl || scraping}
-                  className="gap-1.5"
+                  className="min-h-[44px] gap-1.5 sm:min-h-0"
                 >
                   {scraping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                  <span className="sm:hidden">Scrape</span>
                 </Button>
               </div>
             </div>
@@ -645,9 +646,9 @@ export default function PropertyDataHubPage() {
         </div>
 
         {/* Unified Activity Log */}
-        <div className="mt-8">
-          <LiveLog entries={logs} onClear={clearLogs} height={380} />
-          <p className="mt-2 text-xs text-muted-foreground">
+        <div className="mt-6 sm:mt-8">
+          <LiveLog entries={logs} onClear={clearLogs} height={280} />
+          <p className="mt-2 text-[11px] text-muted-foreground sm:text-xs">
             Tracks every Scrape, Import, and Audit event in real time. Database updates are logged only after Supabase
             confirms the write.
           </p>
