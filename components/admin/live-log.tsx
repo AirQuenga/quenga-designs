@@ -21,14 +21,6 @@ interface LiveLogProps {
   height?: number
 }
 
-/**
- * Civic Professional palette — light theme.
- *
- * The container now matches the off-white Import / Audit / Scrape cards so the
- * page reads as one cohesive Civic surface instead of a "terminal in a panel".
- * Status pills use soft, desaturated pastels (sage, lavender, rose, sky) over
- * crisp slate-900 message text for maximum readability.
- */
 const STATUS_STYLES: Record<LogStatus, { dot: string; badge: string }> = {
   SUCCESS: {
     dot: "bg-emerald-500",
@@ -70,7 +62,16 @@ function formatTimestamp(ts: number): string {
   })
 }
 
-export function LiveLog({ entries, onClear, height = 380 }: LiveLogProps) {
+function formatTimestampShort(ts: number): string {
+  const d = new Date(ts)
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+}
+
+export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
 
@@ -93,104 +94,101 @@ export function LiveLog({ entries, onClear, height = 380 }: LiveLogProps) {
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      {/* Civic header strip */}
-      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+      {/* Header strip - responsive */}
+      <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-900/5">
+          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-slate-900/5">
             <Activity className="h-3.5 w-3.5 text-slate-700" />
           </div>
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Activity Log</h3>
             <p className="text-[10px] uppercase tracking-wider text-slate-500">
-              {entries.length} {entries.length === 1 ? "event" : "events"} · real-time
+              {entries.length} {entries.length === 1 ? "event" : "events"}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Live counts */}
-          <div className="hidden items-center gap-2 text-[10px] sm:flex">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
+          {/* Live counts - mobile-friendly */}
+          <div className="flex items-center gap-1.5 text-[10px] sm:gap-2">
             <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-800">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              {counts.success} OK
+              {counts.success}
             </span>
             <span className="inline-flex items-center gap-1 rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 font-semibold text-rose-800">
               <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-              {counts.error} ERR
+              {counts.error}
             </span>
             {counts.warn > 0 && (
               <span className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-800">
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                {counts.warn} WARN
+                {counts.warn}
               </span>
             )}
           </div>
 
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setPaused((p) => !p)}
-            className="h-7 gap-1.5 px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-          >
-            {paused ? (
-              <>
-                <Play className="h-3 w-3" /> Resume
-              </>
-            ) : (
-              <>
-                <Pause className="h-3 w-3" /> Pause
-              </>
-            )}
-          </Button>
-
-          {onClear && (
+          <div className="flex items-center gap-1">
             <Button
               size="sm"
               variant="ghost"
-              onClick={onClear}
-              className="h-7 gap-1.5 px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+              onClick={() => setPaused((p) => !p)}
+              className="h-8 min-w-[44px] gap-1 px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 sm:h-7 sm:min-w-0 sm:gap-1.5"
             >
-              <Trash2 className="h-3 w-3" /> Clear
+              {paused ? <Play className="h-3.5 w-3.5 sm:h-3 sm:w-3" /> : <Pause className="h-3.5 w-3.5 sm:h-3 sm:w-3" />}
+              <span className="hidden sm:inline">{paused ? "Resume" : "Pause"}</span>
             </Button>
-          )}
+
+            {onClear && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onClear}
+                className="h-8 min-w-[44px] gap-1 px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 sm:h-7 sm:min-w-0 sm:gap-1.5"
+              >
+                <Trash2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+                <span className="hidden sm:inline">Clear</span>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Log body */}
+      {/* Log body - mobile-optimized */}
       <div
         ref={containerRef}
-        style={{ height }}
-        className="overflow-y-auto bg-slate-50/40 px-4 py-3 font-mono text-[12px] leading-relaxed text-slate-900"
+        style={{ maxHeight: height }}
+        className="overflow-y-auto bg-slate-50/40 px-3 py-2.5 text-[11px] leading-relaxed text-slate-900 sm:px-4 sm:py-3 sm:text-[12px]"
       >
         {entries.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-1.5 text-slate-400">
+          <div className="flex h-32 flex-col items-center justify-center gap-1.5 text-slate-400 sm:h-40">
             <Activity className="h-5 w-5 opacity-40" />
             <p className="text-xs">Waiting for activity…</p>
-            <p className="text-[10px] text-slate-400/80">
-              System Audit events will stream here in real time.
-            </p>
           </div>
         ) : (
-          <ul className="space-y-1">
+          <ul className="space-y-1.5 sm:space-y-1">
             {entries.map((entry) => {
               const styles = STATUS_STYLES[entry.status]
               return (
-                <li key={entry.id} className="flex items-start gap-2">
-                  <span className="mt-0.5 flex-shrink-0 select-none text-slate-500">
-                    [{formatTimestamp(entry.timestamp)}]
+                <li key={entry.id} className="flex flex-wrap items-start gap-1 sm:flex-nowrap sm:gap-2">
+                  {/* Timestamp - shorter on mobile */}
+                  <span className="flex-shrink-0 select-none font-mono text-[10px] text-slate-400 sm:mt-0.5 sm:text-slate-500">
+                    <span className="hidden sm:inline">[{formatTimestamp(entry.timestamp)}]</span>
+                    <span className="sm:hidden">{formatTimestampShort(entry.timestamp)}</span>
                   </span>
+                  {/* Badges - compact on mobile */}
                   <span
-                    className={`mt-0.5 inline-flex flex-shrink-0 items-center rounded border px-1.5 py-0 text-[10px] font-semibold tracking-wide ${SOURCE_BADGE[entry.source]}`}
+                    className={`inline-flex flex-shrink-0 items-center rounded border px-1 py-0 text-[9px] font-semibold tracking-wide sm:mt-0.5 sm:px-1.5 sm:text-[10px] ${SOURCE_BADGE[entry.source]}`}
                   >
                     {entry.source}
                   </span>
                   <span
-                    className={`mt-0.5 inline-flex flex-shrink-0 items-center gap-1 rounded border px-1.5 py-0 text-[10px] font-semibold tracking-wide ${styles.badge}`}
+                    className={`inline-flex flex-shrink-0 items-center gap-0.5 rounded border px-1 py-0 text-[9px] font-semibold tracking-wide sm:mt-0.5 sm:gap-1 sm:px-1.5 sm:text-[10px] ${styles.badge}`}
                   >
-                    <span className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} />
+                    <span className={`h-1 w-1 rounded-full sm:h-1.5 sm:w-1.5 ${styles.dot}`} />
                     {entry.status}
                   </span>
-                  <span className="break-all text-slate-800">{entry.message}</span>
+                  {/* Message - allow wrapping */}
+                  <span className="w-full break-words text-slate-800 sm:w-auto sm:flex-1">{entry.message}</span>
                 </li>
               )
             })}

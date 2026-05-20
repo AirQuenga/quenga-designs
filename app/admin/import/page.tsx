@@ -200,7 +200,7 @@ export default function PropertyDataHubPage() {
   }
 
   /* ============================================================
-   *  AUDIT — call auditBatch() in a loop until done
+   *  AUDIT — call auditUnifiedBatch() in a loop until done
    * ============================================================ */
 
   // Map an audit log line's level to the unified LiveLog status taxonomy.
