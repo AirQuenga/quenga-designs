@@ -608,25 +608,64 @@ export default function PropertyDataHubPage() {
             )}
 
             {scrapeListing && (
-              <div className="mt-4 space-y-2 rounded-md border border-border bg-muted/30 p-3 text-xs">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-foreground">{scrapeListing.title ?? "Untitled listing"}</p>
-                  {scrapeListing.matched_property_id && (
-                    <Badge className="bg-primary text-primary-foreground hover:bg-primary">Atlas match</Badge>
-                  )}
+              <div className="mt-4 space-y-3 rounded-md border border-border bg-muted/30 p-3 text-xs">
+                {/* Header with title and confidence */}
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex-1">
+                    <p className="font-semibold text-foreground">{scrapeListing.title ?? "Untitled listing"}</p>
+                    {(scrapeListing.address || scrapeListing.city) && (
+                      <p className="mt-0.5 text-muted-foreground">
+                        {[scrapeListing.address, scrapeListing.city, scrapeListing.state, scrapeListing.zip_code]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {scrapeListing.matched_property_id && (
+                      <Badge className="bg-primary text-primary-foreground hover:bg-primary">Atlas Match</Badge>
+                    )}
+                    <Badge
+                      variant="outline"
+                      className={
+                        scrapeListing.confidence >= 70
+                          ? "border-emerald-500/50 text-emerald-600"
+                          : scrapeListing.confidence >= 40
+                            ? "border-amber-500/50 text-amber-600"
+                            : "border-red-500/50 text-red-600"
+                      }
+                    >
+                      {scrapeListing.confidence}% confidence
+                    </Badge>
+                  </div>
                 </div>
-                {scrapeListing.address && (
-                  <p className="text-muted-foreground">{scrapeListing.address}</p>
+
+                {/* Property type and pets */}
+                {(scrapeListing.property_type || scrapeListing.pets_allowed !== null) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {scrapeListing.property_type && (
+                      <Badge variant="secondary" className="capitalize">
+                        {scrapeListing.property_type}
+                      </Badge>
+                    )}
+                    {scrapeListing.pets_allowed !== null && (
+                      <Badge variant="secondary">
+                        {scrapeListing.pets_allowed ? "Pets OK" : "No Pets"}
+                      </Badge>
+                    )}
+                  </div>
                 )}
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-1">
+
+                {/* Key stats */}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-border pt-2 sm:grid-cols-4">
                   {scrapeListing.price !== null && (
                     <div className="text-muted-foreground">
-                      Rent: <span className="font-semibold text-foreground">${scrapeListing.price}</span>
+                      Rent: <span className="font-semibold text-foreground">${scrapeListing.price.toLocaleString()}</span>
                     </div>
                   )}
                   {scrapeListing.bedrooms !== null && (
                     <div className="text-muted-foreground">
-                      Beds: <span className="font-semibold text-foreground">{scrapeListing.bedrooms}</span>
+                      Beds: <span className="font-semibold text-foreground">{scrapeListing.bedrooms === 0 ? "Studio" : scrapeListing.bedrooms}</span>
                     </div>
                   )}
                   {scrapeListing.bathrooms !== null && (
@@ -636,9 +675,61 @@ export default function PropertyDataHubPage() {
                   )}
                   {scrapeListing.square_feet !== null && (
                     <div className="text-muted-foreground">
-                      Sq ft: <span className="font-semibold text-foreground">{scrapeListing.square_feet}</span>
+                      Sq ft: <span className="font-semibold text-foreground">{scrapeListing.square_feet.toLocaleString()}</span>
                     </div>
                   )}
+                  {scrapeListing.available_date && (
+                    <div className="text-muted-foreground">
+                      Available: <span className="font-semibold text-foreground">{scrapeListing.available_date}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Amenities */}
+                {scrapeListing.amenities && scrapeListing.amenities.length > 0 && (
+                  <div className="border-t border-border pt-2">
+                    <p className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Amenities</p>
+                    <div className="flex flex-wrap gap-1">
+                      {scrapeListing.amenities.slice(0, 8).map((a) => (
+                        <Badge key={a} variant="outline" className="text-[10px]">
+                          {a}
+                        </Badge>
+                      ))}
+                      {scrapeListing.amenities.length > 8 && (
+                        <Badge variant="outline" className="text-[10px]">
+                          +{scrapeListing.amenities.length - 8} more
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Images preview */}
+                {scrapeListing.images && scrapeListing.images.length > 0 && (
+                  <div className="border-t border-border pt-2">
+                    <p className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {scrapeListing.images.length} Image{scrapeListing.images.length > 1 ? "s" : ""} Found
+                    </p>
+                    <div className="flex gap-1.5 overflow-x-auto pb-1">
+                      {scrapeListing.images.slice(0, 4).map((img, i) => (
+                        <img
+                          key={i}
+                          src={img}
+                          alt={`Listing image ${i + 1}`}
+                          className="h-16 w-20 flex-shrink-0 rounded border border-border object-cover sm:h-20 sm:w-24"
+                          crossOrigin="anonymous"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none"
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Source */}
+                <div className="border-t border-border pt-2 text-[10px] text-muted-foreground">
+                  Source: {scrapeListing.source_host}
                 </div>
               </div>
             )}
