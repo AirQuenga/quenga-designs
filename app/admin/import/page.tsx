@@ -41,9 +41,17 @@ type ScrapedListing = {
   bathrooms: number | null
   square_feet: number | null
   address: string | null
+  city: string | null
+  state: string | null
+  zip_code: string | null
   description: string | null
+  property_type: string | null
+  amenities: string[]
+  pets_allowed: boolean | null
+  images: string[]
   matched_property_id: string | null
   matched_property_address: string | null
+  confidence: number
 }
 
 const TEMPLATE_HEADERS = [
