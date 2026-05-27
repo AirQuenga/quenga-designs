@@ -1,5 +1,5 @@
 import { Metadata } from "next"
-import { CommunityServicesTable } from "@/components/community/community-services-table"
+import { CommunityServicesDirectory } from "@/components/community/community-services-directory"
 import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
 import { PageHeader } from "@/components/page-header"
@@ -26,11 +26,11 @@ export default function CommunityServicesPage() {
         <div className="container mx-auto max-w-6xl px-6 py-12">
           <PageHeader
             title="Community Services"
-            description="Find mental health, food banks, legal aid, job training, housing support, and other community resources throughout Butte County."
+            description="Search Butte County resources by need or browse by category. Every entry is verified and regularly audited."
           />
 
           <div className="mt-10">
-            <CommunityServicesTable />
+            <CommunityServicesDirectory />
           </div>
         </div>
       </main>
