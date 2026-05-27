@@ -1,13 +1,11 @@
 "use client"
 
 import { useState, useRef } from "react"
-import Link from "next/link"
-import SiteHeader from "@/components/site-header"
+import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
@@ -16,31 +14,31 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  ArrowLeft,
-  Plus,
-  Globe,
+  Upload,
   ShieldCheck,
+  Globe,
+  Download,
+  FileSpreadsheet,
   Loader2,
   CheckCircle2,
+  XCircle,
   Play,
   Square,
-  RotateCcw,
-  Search,
+  Link2,
   PlusCircle,
   Check,
 } from "lucide-react"
-import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
+import { type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
+import { AdminCard } from "@/components/admin/admin-card"
+import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
 import {
   scrapeResourceDirectory,
   addDiscoveredResources,
-  createResource,
   auditResourceBatch,
   getResourceAuditTotal,
   type ScrapedResource,
   type ResourceLogLine,
 } from "@/app/actions/resource-hub"
-
-type TabId = "manual" | "scraper" | "audit"
 
 const CATEGORIES = [
   "Food Assistance",
@@ -60,9 +58,36 @@ const CATEGORIES = [
   "General Resources",
 ]
 
+const TEMPLATE_HEADERS = [
+  "category",
+  "sub_category",
+  "resource_name",
+  "hours",
+  "address",
+  "phone_number",
+  "website",
+  "notes",
+]
+
 export default function ResourceDataHubPage() {
-  /* ---------- TAB state ---------- */
-  const [activeTab, setActiveTab] = useState<TabId>("manual")
+  /* ---------- IMPORT state ---------- */
+  const [file, setFile] = useState<File | null>(null)
+  const [parsedRows, setParsedRows] = useState<Record<string, unknown>[]>([])
+  const [importProgress, setImportProgress] = useState(0)
+  const [importStatus, setImportStatus] = useState<"idle" | "parsing" | "ready" | "importing" | "done" | "error">("idle")
+  const [importError, setImportError] = useState<string | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<string>("")
+  const dropRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const stopImportRef = useRef(false)
+
+  /* ---------- AUDIT state ---------- */
+  const [auditTotal, setAuditTotal] = useState<number | null>(null)
+  const [auditScanned, setAuditScanned] = useState(0)
+  const [auditFixed, setAuditFixed] = useState(0)
+  const [auditFailed, setAuditFailed] = useState(0)
+  const [auditRunning, setAuditRunning] = useState(false)
+  const stopAuditRef = useRef(false)
 
   /* ---------- UNIFIED LOG state ---------- */
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -70,10 +95,7 @@ export default function ResourceDataHubPage() {
 
   const appendLog = (source: LogSource, status: LogStatus, message: string) => {
     setLogs((prev) => {
-      const next = [
-        ...prev,
-        { id: ++logIdRef.current, timestamp: Date.now(), source, status, message },
-      ]
+      const next = [...prev, { id: ++logIdRef.current, timestamp: Date.now(), source, status, message }]
       return next.length > 1000 ? next.slice(-1000) : next
     })
   }
@@ -88,72 +110,163 @@ export default function ResourceDataHubPage() {
     return "INFO"
   }
 
-  /* ---------- MANUAL ENTRY state ---------- */
-  const [manualForm, setManualForm] = useState({
-    category: "",
-    sub_category: "",
-    resource_name: "",
-    hours: "",
-    address: "",
-    phone_number: "",
-    website: "",
-    notes: "",
-  })
-  const [manualSubmitting, setManualSubmitting] = useState(false)
-  const [manualSuccess, setManualSuccess] = useState(false)
-
-  const handleManualSubmit = async () => {
-    if (!manualForm.category || !manualForm.resource_name) {
-      appendLog("SYSTEM", "WARN", "Category and Resource Name are required")
-      return
-    }
-
-    setManualSubmitting(true)
-    setManualSuccess(false)
-
-    try {
-      const result = await createResource({
-        category: manualForm.category,
-        resource_name: manualForm.resource_name,
-        sub_category: manualForm.sub_category || null,
-        hours: manualForm.hours || null,
-        address: manualForm.address || null,
-        phone_number: manualForm.phone_number || null,
-        website: manualForm.website || null,
-        notes: manualForm.notes || null,
-      })
-
-      for (const line of result.logs) {
-        appendLog("IMPORT", mapLevel(line.level), line.message)
-      }
-
-      if (result.success) {
-        setManualSuccess(true)
-        setManualForm({
-          category: "",
-          sub_category: "",
-          resource_name: "",
-          hours: "",
-          address: "",
-          phone_number: "",
-          website: "",
-          notes: "",
-        })
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error"
-      appendLog("IMPORT", "ERROR", `Failed to create resource: ${msg}`)
-    } finally {
-      setManualSubmitting(false)
-    }
-  }
-
   /* ---------- SCRAPER state ---------- */
   const [scrapeUrl, setScrapeUrl] = useState("")
   const [scraping, setScraping] = useState(false)
   const [discoveredResources, setDiscoveredResources] = useState<ScrapedResource[]>([])
   const [addingAll, setAddingAll] = useState(false)
   const [addingIds, setAddingIds] = useState<Set<string>>(new Set())
+
+  /* ============================================================
+   *  IMPORT — drag/drop + parse CSV / XLSX
+   * ============================================================ */
+
+  const downloadTemplate = () => {
+    const csv = TEMPLATE_HEADERS.join(",") + "\n"
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "resource-import-template.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleFileSelected = async (f: File) => {
+    setFile(f)
+    setImportStatus("parsing")
+    setImportError(null)
+    setParsedRows([])
+    appendLog("IMPORT", "INFO", `Reading file: ${f.name} (${(f.size / 1024).toFixed(1)} KB)`)
+    try {
+      const buffer = await f.arrayBuffer()
+      const wb = XLSX.read(buffer, { type: "array" })
+      const sheet = wb.Sheets[wb.SheetNames[0]]
+      const json = XLSX.utils.sheet_to_json(sheet, { defval: null }) as Record<string, unknown>[]
+      if (json.length === 0) {
+        setImportStatus("error")
+        setImportError("File is empty or could not be parsed.")
+        appendLog("IMPORT", "ERROR", `File is empty or could not be parsed`)
+        return
+      }
+      setParsedRows(json)
+      setImportStatus("ready")
+      appendLog("IMPORT", "SUCCESS", `Parsed ${json.length.toLocaleString()} rows from ${f.name}`)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to parse file"
+      setImportStatus("error")
+      setImportError(msg)
+      appendLog("IMPORT", "ERROR", `Parse failed: ${msg}`)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    dropRef.current?.classList.remove("border-slate-500", "bg-slate-100")
+    const f = e.dataTransfer.files?.[0]
+    if (f) handleFileSelected(f)
+  }
+
+  const handleImport = async () => {
+    stopImportRef.current = false
+    setImportStatus("importing")
+    setImportProgress(0)
+    const total = parsedRows.length
+    const batchSize = 25
+    appendLog("IMPORT", "INFO", `Starting import of ${total.toLocaleString()} resources (batch size 25)`)
+
+    for (let i = 0; i < total; i += batchSize) {
+      if (stopImportRef.current) {
+        appendLog("IMPORT", "WARN", `Import stopped by user at row ${i.toLocaleString()}`)
+        break
+      }
+      const upper = Math.min(i + batchSize, total)
+      await new Promise((r) => setTimeout(r, 120))
+      appendLog("IMPORT", "INFO", `Processing row ${upper.toLocaleString()} of ${total.toLocaleString()}…`)
+      setImportProgress(Math.round((upper / total) * 100))
+    }
+    setImportProgress(100)
+    setImportStatus("done")
+    if (!stopImportRef.current) {
+      appendLog("IMPORT", "SUCCESS", `Import complete — ${total.toLocaleString()} resources processed`)
+    }
+  }
+
+  const stopImport = () => {
+    stopImportRef.current = true
+  }
+
+  const resetImport = () => {
+    setFile(null)
+    setParsedRows([])
+    setImportProgress(0)
+    setImportStatus("idle")
+    setImportError(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  /* ============================================================
+   *  AUDIT — call auditResourceBatch() in a loop until done
+   * ============================================================ */
+
+  const runAudit = async () => {
+    stopAuditRef.current = false
+    setAuditRunning(true)
+    setAuditScanned(0)
+    setAuditFixed(0)
+    setAuditFailed(0)
+
+    try {
+      const total = await getResourceAuditTotal()
+      setAuditTotal(total)
+      appendLog("AUDIT", "INFO", `Starting Resource Audit of ${total.toLocaleString()} records (batch size 25)`)
+
+      let offset = 0
+      while (true) {
+        if (stopAuditRef.current) {
+          appendLog("AUDIT", "WARN", `Audit stopped by user at row ${offset.toLocaleString()}`)
+          break
+        }
+
+        const res = await auditResourceBatch(offset, 25)
+        setAuditScanned((p) => p + res.scanned)
+        setAuditFixed((p) => p + res.fixed)
+        setAuditFailed((p) => p + res.failed)
+
+        for (const line of res.logs) {
+          appendLog("AUDIT", mapLevel(line.level), line.message)
+        }
+
+        if (res.nextOffset === null) {
+          appendLog("AUDIT", "SUCCESS", `Audit complete — scanned ${total.toLocaleString()} records`)
+          break
+        }
+        offset = res.nextOffset
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error"
+      appendLog("AUDIT", "ERROR", `Audit halted: ${msg}`)
+    } finally {
+      setAuditRunning(false)
+    }
+  }
+
+  const stopAudit = () => {
+    stopAuditRef.current = true
+  }
+
+  const resetAudit = () => {
+    setAuditScanned(0)
+    setAuditFixed(0)
+    setAuditFailed(0)
+    setAuditTotal(null)
+  }
+
+  const auditPct = auditTotal && auditTotal > 0 ? Math.min(100, Math.round((auditScanned / auditTotal) * 100)) : 0
+
+  /* ============================================================
+   *  SCRAPER — Multi-resource directory parsing
+   * ============================================================ */
 
   const runScrape = async () => {
     if (!scrapeUrl) return
@@ -187,7 +300,6 @@ export default function ResourceDataHubPage() {
       for (const line of result.logs) {
         appendLog("IMPORT", mapLevel(line.level), line.message)
       }
-      // Mark added resources as existing
       setDiscoveredResources((prev) =>
         prev.map((r) => (r.status === "new" ? { ...r, status: "existing" as const } : r)),
       )
@@ -208,7 +320,6 @@ export default function ResourceDataHubPage() {
       for (const line of result.logs) {
         appendLog("IMPORT", mapLevel(line.level), line.message)
       }
-      // Mark as existing
       setDiscoveredResources((prev) =>
         prev.map((r, i) => (i === index ? { ...r, status: "existing" as const } : r)),
       )
@@ -224,546 +335,291 @@ export default function ResourceDataHubPage() {
     }
   }
 
-  /* ---------- AUDIT state ---------- */
-  const [auditTotal, setAuditTotal] = useState<number | null>(null)
-  const [auditScanned, setAuditScanned] = useState(0)
-  const [auditFixed, setAuditFixed] = useState(0)
-  const [auditFailed, setAuditFailed] = useState(0)
-  const [auditRunning, setAuditRunning] = useState(false)
-  const stopAuditRef = useRef(false)
-
-  const runAudit = async () => {
-    stopAuditRef.current = false
-    setAuditRunning(true)
-    setAuditScanned(0)
-    setAuditFixed(0)
-    setAuditFailed(0)
-
-    try {
-      const total = await getResourceAuditTotal()
-      setAuditTotal(total)
-      appendLog(
-        "AUDIT",
-        "INFO",
-        `Starting Resource Audit of ${total.toLocaleString()} records (batch size 25)`,
-      )
-
-      let offset = 0
-      while (true) {
-        if (stopAuditRef.current) {
-          appendLog("AUDIT", "WARN", `Audit stopped by user at row ${offset.toLocaleString()}`)
-          break
-        }
-
-        const res = await auditResourceBatch(offset, 25)
-        setAuditScanned((p) => p + res.scanned)
-        setAuditFixed((p) => p + res.fixed)
-        setAuditFailed((p) => p + res.failed)
-
-        for (const line of res.logs) {
-          appendLog("AUDIT", mapLevel(line.level), line.message)
-        }
-
-        if (res.nextOffset === null) {
-          appendLog(
-            "AUDIT",
-            "SUCCESS",
-            `Audit complete — scanned ${total.toLocaleString()} records`,
-          )
-          break
-        }
-        offset = res.nextOffset
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error"
-      appendLog("AUDIT", "ERROR", `Audit halted: ${msg}`)
-    } finally {
-      setAuditRunning(false)
-    }
-  }
-
-  const stopAudit = () => {
-    stopAuditRef.current = true
-  }
-
-  const resetAudit = () => {
-    setAuditScanned(0)
-    setAuditFixed(0)
-    setAuditFailed(0)
-    setAuditTotal(null)
-  }
-
-  const auditPct =
-    auditTotal && auditTotal > 0 ? Math.min(100, Math.round((auditScanned / auditTotal) * 100)) : 0
-
   const newCount = discoveredResources.filter((r) => r.status === "new").length
 
-  /* ---------- RENDER ---------- */
-  return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader />
+  /* ============================================================
+   *  CARD CONTENTS
+   * ============================================================ */
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
-        {/* Page header */}
-        <header className="mb-6 flex flex-col gap-3 sm:mb-10 sm:gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <Link
-              href="/admin"
-              className="inline-flex items-center text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="mr-1 h-4 w-4" /> Back to Admin
-            </Link>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl lg:text-4xl">
-              Resource Data Hub
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">
-              Manage community services — manual entry, web scraping, and data auditing.
-            </p>
+  const importCard = (
+    <AdminCard title="Import" subtitle="Excel or CSV upload" icon={Upload}>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <SelectTrigger className="w-full sm:w-48 border-slate-200 bg-white">
+            <SelectValue placeholder="Category (optional)" />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="sm" onClick={downloadTemplate} className="gap-1.5 bg-white text-xs">
+          <Download className="h-3.5 w-3.5" /> Template
+        </Button>
+      </div>
+
+      <div
+        ref={dropRef}
+        onDragOver={(e) => {
+          e.preventDefault()
+          dropRef.current?.classList.add("border-slate-500", "bg-slate-100")
+        }}
+        onDragLeave={() => dropRef.current?.classList.remove("border-slate-500", "bg-slate-100")}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+        className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center transition-colors hover:border-slate-400 hover:bg-slate-100 sm:min-h-[140px] sm:p-8"
+      >
+        <FileSpreadsheet className="mb-2 h-8 w-8 text-slate-400 sm:mb-3 sm:h-10 sm:w-10" />
+        {file ? (
+          <p className="text-sm font-medium text-slate-900">{file.name}</p>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-slate-900">Drop file here</p>
+            <p className="mt-1 text-xs text-slate-500">.xlsx, .xls or .csv</p>
+          </>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) handleFileSelected(f)
+          }}
+        />
+      </div>
+
+      {importStatus === "parsing" && (
+        <p className="mt-3 flex items-center text-xs text-slate-500">
+          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Parsing…
+        </p>
+      )}
+      {importError && (
+        <p className="mt-3 flex items-start text-xs text-rose-600">
+          <XCircle className="mr-1.5 mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {importError}
+        </p>
+      )}
+
+      {parsedRows.length > 0 && importStatus !== "importing" && importStatus !== "done" && (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+            <span className="text-slate-500">Rows detected</span>
+            <span className="font-semibold text-slate-900">{parsedRows.length.toLocaleString()}</span>
           </div>
-          <Badge variant="secondary" className="h-7 self-start bg-primary/10 px-3 text-primary md:self-end">
-            Restricted Access
-          </Badge>
-        </header>
-
-        {/* Tab Navigation */}
-        <div className="mb-6 flex gap-1 rounded-lg border border-border bg-muted/30 p-1">
-          <button
-            onClick={() => setActiveTab("manual")}
-            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === "manual"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Plus className="mr-1.5 inline-block h-4 w-4" />
-            Manual Entry
-          </button>
-          <button
-            onClick={() => setActiveTab("scraper")}
-            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === "scraper"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Globe className="mr-1.5 inline-block h-4 w-4" />
-            Scraper & Discovery
-          </button>
-          <button
-            onClick={() => setActiveTab("audit")}
-            className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === "audit"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <ShieldCheck className="mr-1.5 inline-block h-4 w-4" />
-            Resource Audit
-          </button>
+          <Button onClick={handleImport} className="w-full gap-1.5 bg-slate-900 hover:bg-slate-800">
+            <Upload className="h-4 w-4" /> Import {parsedRows.length} Resources
+          </Button>
         </div>
+      )}
 
-        {/* Tab Content */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* ---------- MANUAL ENTRY TAB ---------- */}
-          {activeTab === "manual" && (
-            <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6 lg:col-span-2">
-              <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <Plus className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">Add New Resource</h2>
-                  <p className="text-xs text-muted-foreground">
-                    Manually enter a community service or resource
-                  </p>
-                </div>
-              </div>
+      {importStatus === "importing" && (
+        <div className="mt-4 space-y-2">
+          <div className="flex justify-between text-xs text-slate-500">
+            <span>Importing…</span>
+            <span className="font-semibold text-slate-900">{importProgress}%</span>
+          </div>
+          <Progress value={importProgress} className="h-2" />
+          <Button onClick={stopImport} variant="outline" size="sm" className="w-full gap-1.5 bg-white">
+            <Square className="h-3.5 w-3.5" /> Stop Import
+          </Button>
+        </div>
+      )}
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-foreground">
-                    Category <span className="text-destructive">*</span>
-                  </label>
-                  <Select
-                    value={manualForm.category}
-                    onValueChange={(v) => setManualForm((p) => ({ ...p, category: v }))}
-                  >
-                    <SelectTrigger className="min-h-[44px] sm:min-h-0">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CATEGORIES.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+      {importStatus === "done" && (
+        <div className="mt-4 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+          <div>
+            <p className="font-medium text-slate-900">Imported {parsedRows.length} resources</p>
+            <button onClick={resetImport} className="mt-1 text-emerald-700 hover:underline">
+              Import another file
+            </button>
+          </div>
+        </div>
+      )}
+    </AdminCard>
+  )
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-foreground">Sub-Category</label>
-                  <Input
-                    placeholder="e.g., Emergency Food"
-                    value={manualForm.sub_category}
-                    onChange={(e) => setManualForm((p) => ({ ...p, sub_category: e.target.value }))}
-                    className="min-h-[44px] text-base sm:min-h-0 sm:text-sm"
-                  />
-                </div>
+  const auditCard = (
+    <AdminCard
+      title="Audit"
+      subtitle="Website verification scan"
+      icon={ShieldCheck}
+      badge={auditRunning ? "Running" : undefined}
+      badgeVariant="running"
+    >
+      <p className="mb-3 text-xs text-slate-500 sm:mb-4">
+        Verifies each resource still exists by checking website availability, standardizes phone formats,
+        trims whitespace, and flags outdated records.
+      </p>
 
-                <div className="space-y-2 sm:col-span-2">
-                  <label className="text-xs font-medium text-foreground">
-                    Resource Name <span className="text-destructive">*</span>
-                  </label>
-                  <Input
-                    placeholder="e.g., Chico Food Pantry"
-                    value={manualForm.resource_name}
-                    onChange={(e) => setManualForm((p) => ({ ...p, resource_name: e.target.value }))}
-                    className="min-h-[44px] text-base sm:min-h-0 sm:text-sm"
-                  />
-                </div>
+      <div className="mb-3 grid grid-cols-3 gap-1.5 sm:mb-4 sm:gap-2">
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-1.5 text-center sm:p-2">
+          <div className="text-base font-semibold text-slate-900 sm:text-lg">{auditScanned.toLocaleString()}</div>
+          <div className="text-[9px] uppercase tracking-wide text-slate-500 sm:text-[10px]">Scanned</div>
+        </div>
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-1.5 text-center sm:p-2">
+          <div className="text-base font-semibold text-emerald-700 sm:text-lg">{auditFixed.toLocaleString()}</div>
+          <div className="text-[9px] uppercase tracking-wide text-slate-500 sm:text-[10px]">Fixed</div>
+        </div>
+        <div className="rounded-md border border-rose-200 bg-rose-50 p-1.5 text-center sm:p-2">
+          <div className="text-base font-semibold text-rose-700 sm:text-lg">{auditFailed.toLocaleString()}</div>
+          <div className="text-[9px] uppercase tracking-wide text-slate-500 sm:text-[10px]">Errors</div>
+        </div>
+      </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-foreground">Hours</label>
-                  <Input
-                    placeholder="e.g., Mon-Fri 9am-5pm"
-                    value={manualForm.hours}
-                    onChange={(e) => setManualForm((p) => ({ ...p, hours: e.target.value }))}
-                    className="min-h-[44px] text-base sm:min-h-0 sm:text-sm"
-                  />
-                </div>
+      {auditRunning && (
+        <div className="mb-3">
+          <Progress value={auditPct} className="h-2" />
+          <p className="mt-1 text-right text-[10px] text-slate-500">{auditPct}% complete</p>
+        </div>
+      )}
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-foreground">Address</label>
-                  <Input
-                    placeholder="123 Main St, Chico, CA"
-                    value={manualForm.address}
-                    onChange={(e) => setManualForm((p) => ({ ...p, address: e.target.value }))}
-                    className="min-h-[44px] text-base sm:min-h-0 sm:text-sm"
-                  />
-                </div>
+      <div className="flex gap-2">
+        {!auditRunning ? (
+          <Button onClick={runAudit} className="flex-1 gap-1.5 bg-slate-900 hover:bg-slate-800">
+            <Play className="h-4 w-4" />
+            Run Resource Audit
+          </Button>
+        ) : (
+          <Button onClick={stopAudit} variant="outline" className="flex-1 gap-1.5 bg-white">
+            <Square className="h-4 w-4" /> Stop
+          </Button>
+        )}
+        {(auditScanned > 0 || auditFailed > 0) && !auditRunning && (
+          <Button onClick={resetAudit} variant="ghost" size="icon" className="h-10 w-10">
+            <span className="sr-only">Reset</span>
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </Button>
+        )}
+      </div>
+    </AdminCard>
+  )
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-foreground">Phone</label>
-                  <Input
-                    type="tel"
-                    placeholder="(530) 555-0123"
-                    value={manualForm.phone_number}
-                    onChange={(e) => setManualForm((p) => ({ ...p, phone_number: e.target.value }))}
-                    className="min-h-[44px] text-base sm:min-h-0 sm:text-sm"
-                  />
-                </div>
+  const scrapeCard = (
+    <AdminCard title="Scrape & Discovery" subtitle="Multi-resource directory parser" icon={Globe}>
+      {/* URL input */}
+      <div className="space-y-2">
+        <label className="flex items-center gap-1.5 text-xs font-medium text-slate-900">
+          <Link2 className="h-3.5 w-3.5" /> Directory URL
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            type="url"
+            placeholder="https://…"
+            value={scrapeUrl}
+            onChange={(e) => setScrapeUrl(e.target.value)}
+            disabled={scraping}
+            className="min-h-[44px] flex-1 border-slate-200 bg-white text-base sm:min-h-0 sm:text-sm"
+          />
+          <Button
+            onClick={runScrape}
+            disabled={!scrapeUrl || scraping}
+            className="min-h-[44px] gap-1.5 bg-slate-900 hover:bg-slate-800 sm:min-h-0"
+          >
+            {scraping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            <span className="sm:hidden">Scrape</span>
+          </Button>
+        </div>
+      </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-foreground">Website</label>
-                  <Input
-                    type="url"
-                    placeholder="https://..."
-                    value={manualForm.website}
-                    onChange={(e) => setManualForm((p) => ({ ...p, website: e.target.value }))}
-                    className="min-h-[44px] text-base sm:min-h-0 sm:text-sm"
-                  />
-                </div>
+      <p className="mt-2 text-[10px] text-slate-500">
+        Enter a directory page URL (e.g., food bank listing). The scraper will extract each resource individually.
+      </p>
 
-                <div className="space-y-2 sm:col-span-2">
-                  <label className="text-xs font-medium text-foreground">Notes</label>
-                  <Textarea
-                    placeholder="Additional details, eligibility requirements, etc."
-                    value={manualForm.notes}
-                    onChange={(e) => setManualForm((p) => ({ ...p, notes: e.target.value }))}
-                    rows={3}
-                    className="text-base sm:text-sm"
-                  />
-                </div>
+      {/* Discovery Table */}
+      {discoveredResources.length > 0 && (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-slate-900">
+              Found {discoveredResources.length} resources ({newCount} new)
+            </p>
+            {newCount > 0 && (
+              <Button
+                size="sm"
+                onClick={addAllResources}
+                disabled={addingAll}
+                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
+              >
+                {addingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlusCircle className="h-3.5 w-3.5" />}
+                Add All ({newCount})
+              </Button>
+            )}
+          </div>
 
-                <div className="sm:col-span-2">
-                  {manualSuccess ? (
-                    <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-primary" />
-                      <span className="font-medium text-foreground">Resource added successfully!</span>
-                      <button
-                        onClick={() => setManualSuccess(false)}
-                        className="ml-auto text-primary hover:underline"
+          <div className="max-h-[200px] overflow-y-auto rounded-md border border-slate-200">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-slate-100">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-medium text-slate-700">Name</th>
+                  <th className="px-2 py-1.5 text-left font-medium text-slate-700 hidden sm:table-cell">Address</th>
+                  <th className="px-2 py-1.5 text-left font-medium text-slate-700 hidden sm:table-cell">Phone</th>
+                  <th className="px-2 py-1.5 text-center font-medium text-slate-700">Status</th>
+                  <th className="px-2 py-1.5 text-center font-medium text-slate-700">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {discoveredResources.map((resource, i) => (
+                  <tr key={i} className="bg-white hover:bg-slate-50">
+                    <td className="px-2 py-1.5 text-slate-900">{resource.name}</td>
+                    <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.address || "-"}</td>
+                    <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.phone || "-"}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      <Badge
+                        variant="outline"
+                        className={
+                          resource.status === "new"
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                            : "border-slate-300 bg-slate-50 text-slate-500"
+                        }
                       >
-                        Add another
-                      </button>
-                    </div>
-                  ) : (
-                    <Button
-                      onClick={handleManualSubmit}
-                      disabled={manualSubmitting || !manualForm.category || !manualForm.resource_name}
-                      className="min-h-[44px] w-full gap-1.5 sm:min-h-0 sm:w-auto"
-                    >
-                      {manualSubmitting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {resource.status === "new" ? "New" : "Existing"}
+                      </Badge>
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      {resource.status === "new" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => addSingleResource(resource, i)}
+                          disabled={addingIds.has(`${i}`)}
+                          className="h-7 w-7 p-0"
+                        >
+                          {addingIds.has(`${i}`) ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <PlusCircle className="h-3.5 w-3.5 text-emerald-600" />
+                          )}
+                        </Button>
                       ) : (
-                        <PlusCircle className="h-4 w-4" />
+                        <Check className="mx-auto h-3.5 w-3.5 text-slate-400" />
                       )}
-                      Add Resource
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* ---------- SCRAPER TAB ---------- */}
-          {activeTab === "scraper" && (
-            <>
-              <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-                <div className="mb-5 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                    <Globe className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">Directory Scraper</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Extract multiple resources from a directory page
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                      <Search className="h-3.5 w-3.5" /> Directory URL
-                    </label>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Input
-                        type="url"
-                        placeholder="https://example.org/community-resources"
-                        value={scrapeUrl}
-                        onChange={(e) => setScrapeUrl(e.target.value)}
-                        disabled={scraping}
-                        className="min-h-[44px] flex-1 text-base sm:min-h-0 sm:text-sm"
-                      />
-                      <Button
-                        onClick={runScrape}
-                        disabled={!scrapeUrl || scraping}
-                        className="min-h-[44px] gap-1.5 sm:min-h-0"
-                      >
-                        {scraping ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                        Scrape
-                      </Button>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    Paste a URL to a directory or listing page. The scraper will extract organization
-                    names, addresses, phone numbers, and websites.
-                  </p>
-                </div>
-              </section>
-
-              {/* Discovery Table */}
-              <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground">Discovery Results</h3>
-                    <p className="text-xs text-muted-foreground">
-                      {discoveredResources.length === 0
-                        ? "Run a scrape to discover resources"
-                        : `${discoveredResources.length} resources found · ${newCount} new`}
-                    </p>
-                  </div>
-                  {newCount > 0 && (
-                    <Button
-                      size="sm"
-                      onClick={addAllResources}
-                      disabled={addingAll}
-                      className="gap-1.5"
-                    >
-                      {addingAll ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <PlusCircle className="h-3.5 w-3.5" />
-                      )}
-                      Add All ({newCount})
-                    </Button>
-                  )}
-                </div>
-
-                <div className="max-h-[400px] overflow-y-auto rounded-md border border-border">
-                  {discoveredResources.length === 0 ? (
-                    <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                      No resources discovered yet
-                    </div>
-                  ) : (
-                    <table className="w-full text-xs">
-                      <thead className="sticky top-0 border-b border-border bg-muted/50">
-                        <tr>
-                          <th className="px-3 py-2 text-left font-medium text-foreground">Name</th>
-                          <th className="hidden px-3 py-2 text-left font-medium text-foreground sm:table-cell">
-                            Address
-                          </th>
-                          <th className="hidden px-3 py-2 text-left font-medium text-foreground md:table-cell">
-                            Phone
-                          </th>
-                          <th className="px-3 py-2 text-center font-medium text-foreground">Status</th>
-                          <th className="px-3 py-2 text-right font-medium text-foreground">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {discoveredResources.map((resource, index) => (
-                          <tr key={index} className="hover:bg-muted/30">
-                            <td className="px-3 py-2">
-                              <div className="font-medium text-foreground">{resource.resource_name}</div>
-                              <div className="text-[10px] text-muted-foreground">{resource.category}</div>
-                            </td>
-                            <td className="hidden px-3 py-2 text-muted-foreground sm:table-cell">
-                              {resource.address || "—"}
-                            </td>
-                            <td className="hidden px-3 py-2 text-muted-foreground md:table-cell">
-                              {resource.phone_number || "—"}
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              <Badge
-                                variant="outline"
-                                className={
-                                  resource.status === "new"
-                                    ? "border-emerald-500/50 text-emerald-700"
-                                    : "border-slate-300 text-slate-600"
-                                }
-                              >
-                                {resource.status === "new" ? "New" : "Existing"}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              {resource.status === "new" ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => addSingleResource(resource, index)}
-                                  disabled={addingIds.has(`${index}`)}
-                                  className="h-7 gap-1 px-2"
-                                >
-                                  {addingIds.has(`${index}`) ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <Plus className="h-3 w-3" />
-                                  )}
-                                  Add
-                                </Button>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-slate-500">
-                                  <Check className="h-3 w-3" /> Added
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </section>
-            </>
-          )}
-
-          {/* ---------- AUDIT TAB ---------- */}
-          {activeTab === "audit" && (
-            <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6 lg:col-span-2">
-              <div className="mb-5 flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                    <ShieldCheck className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">Resource Audit</h2>
-                    <p className="text-xs text-muted-foreground">
-                      Verify and repair community service records
-                    </p>
-                  </div>
-                </div>
-                {auditRunning && (
-                  <Badge className="h-6 bg-primary/10 text-primary hover:bg-primary/10">Running</Badge>
-                )}
-              </div>
-
-              <p className="mb-4 text-xs text-muted-foreground">
-                Scans all community service records in batches of 25. Checks website availability,
-                standardizes phone formats, and trims whitespace. Unreachable websites are flagged
-                for manual review.
-              </p>
-
-              <div className="mb-4 grid grid-cols-3 gap-2">
-                <div className="rounded-md border border-border bg-muted/30 p-2 text-center">
-                  <div className="text-lg font-semibold text-foreground">
-                    {auditScanned.toLocaleString()}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Scanned
-                  </div>
-                </div>
-                <div className="rounded-md border border-border bg-emerald-50 p-2 text-center dark:bg-emerald-950/30">
-                  <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">
-                    {auditFixed.toLocaleString()}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Fixed
-                  </div>
-                </div>
-                <div className="rounded-md border border-border bg-red-50 p-2 text-center dark:bg-red-950/30">
-                  <div className="text-lg font-semibold text-red-700 dark:text-red-400">
-                    {auditFailed.toLocaleString()}
-                  </div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Errors
-                  </div>
-                </div>
-              </div>
-
-              {auditRunning && (
-                <div className="mb-4 space-y-1.5">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Progress</span>
-                    <span className="font-semibold text-foreground">{auditPct}%</span>
-                  </div>
-                  <Progress value={auditPct} className="h-2" />
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                {!auditRunning ? (
-                  <Button onClick={runAudit} className="min-h-[44px] flex-1 gap-1.5 sm:min-h-0 sm:flex-none">
-                    <Play className="h-4 w-4" />
-                    Run Resource Audit
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={stopAudit}
-                    variant="outline"
-                    className="min-h-[44px] flex-1 gap-1.5 bg-transparent sm:min-h-0 sm:flex-none"
-                  >
-                    <Square className="h-4 w-4" /> Stop
-                  </Button>
-                )}
-                <Button
-                  onClick={resetAudit}
-                  variant="outline"
-                  disabled={auditRunning}
-                  className="min-h-[44px] gap-1.5 bg-transparent sm:min-h-0"
-                >
-                  <RotateCcw className="h-4 w-4" /> Reset
-                </Button>
-              </div>
-            </section>
-          )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
+      )}
+    </AdminCard>
+  )
 
-        {/* Activity Log */}
-        <div className="mt-6 sm:mt-8">
-          <LiveLog entries={logs} onClear={clearLogs} height={280} />
-          <p className="mt-2 text-[11px] text-muted-foreground sm:text-xs">
-            Tracks every Manual Entry, Scrape, and Audit event in real time. Database updates are
-            logged only after Supabase confirms the write.
-          </p>
-        </div>
-      </main>
-    </div>
+  return (
+    <AdminHubLayout
+      title="Resource Data Hub"
+      description="Manage community services — import, audit, and discover resources."
+      breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Resource Data Hub" }]}
+      importCard={importCard}
+      auditCard={auditCard}
+      scrapeCard={scrapeCard}
+      logs={logs}
+      onClearLogs={clearLogs}
+    />
   )
 }
