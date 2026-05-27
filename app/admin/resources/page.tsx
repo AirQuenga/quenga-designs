@@ -4,9 +4,15 @@ import { useState, useRef } from "react"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Upload,
   ShieldCheck,
@@ -18,62 +24,62 @@ import {
   XCircle,
   Play,
   Square,
-  ClipboardPaste,
   Link2,
+  PlusCircle,
+  Check,
 } from "lucide-react"
-import type { AuditLogLine } from "@/app/actions/audit-db"
-import { auditUnifiedBatch, getUnifiedAuditTotal } from "@/app/actions/audit-unified"
 import { type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
+import {
+  scrapeResourceDirectory,
+  addDiscoveredResources,
+  auditResourceBatch,
+  getResourceAuditTotal,
+  type ScrapedResource,
+  type ResourceLogLine,
+} from "@/app/actions/resource-hub"
 
-type ScrapedListing = {
-  source_url: string
-  source_host: string
-  title: string | null
-  price: number | null
-  available_date: string | null
-  bedrooms: number | null
-  bathrooms: number | null
-  square_feet: number | null
-  address: string | null
-  city: string | null
-  state: string | null
-  zip_code: string | null
-  description: string | null
-  property_type: string | null
-  amenities: string[]
-  pets_allowed: boolean | null
-  images: string[]
-  matched_property_id: string | null
-  matched_property_address: string | null
-  confidence: number
-}
+const CATEGORIES = [
+  "Food Assistance",
+  "Housing",
+  "Mental Health",
+  "Healthcare",
+  "Legal Aid",
+  "Employment",
+  "Family Services",
+  "Senior Services",
+  "Veteran Services",
+  "Substance Abuse",
+  "Disability Services",
+  "Utility Assistance",
+  "Education",
+  "Transportation",
+  "General Resources",
+]
 
 const TEMPLATE_HEADERS = [
+  "category",
+  "sub_category",
+  "resource_name",
+  "hours",
   "address",
-  "city",
-  "state",
-  "zip",
-  "apn",
-  "bedrooms",
-  "bathrooms",
-  "square_feet",
-  "rent",
-  "available_date",
-  "management_company",
+  "phone_number",
+  "website",
   "notes",
 ]
 
-export default function PropertyDataHubPage() {
+export default function ResourceDataHubPage() {
   /* ---------- IMPORT state ---------- */
   const [file, setFile] = useState<File | null>(null)
   const [parsedRows, setParsedRows] = useState<Record<string, unknown>[]>([])
   const [importProgress, setImportProgress] = useState(0)
   const [importStatus, setImportStatus] = useState<"idle" | "parsing" | "ready" | "importing" | "done" | "error">("idle")
   const [importError, setImportError] = useState<string | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<string>("")
   const dropRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const stopImportRef = useRef(false)
 
   /* ---------- AUDIT state ---------- */
   const [auditTotal, setAuditTotal] = useState<number | null>(null)
@@ -82,7 +88,6 @@ export default function PropertyDataHubPage() {
   const [auditFailed, setAuditFailed] = useState(0)
   const [auditRunning, setAuditRunning] = useState(false)
   const stopAuditRef = useRef(false)
-  const stopImportRef = useRef(false)
 
   /* ---------- UNIFIED LOG state ---------- */
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -97,13 +102,20 @@ export default function PropertyDataHubPage() {
 
   const clearLogs = () => setLogs([])
 
-  /* ---------- SCRAPE state ---------- */
+  const mapLevel = (level: ResourceLogLine["level"]): LogStatus => {
+    if (level === "FIXED") return "FIXED"
+    if (level === "SUCCESS") return "SUCCESS"
+    if (level === "ERROR") return "ERROR"
+    if (level === "WARN") return "WARN"
+    return "INFO"
+  }
+
+  /* ---------- SCRAPER state ---------- */
   const [scrapeUrl, setScrapeUrl] = useState("")
-  const [pasteHtml, setPasteHtml] = useState("")
   const [scraping, setScraping] = useState(false)
-  const [scrapeListing, setScrapeListing] = useState<ScrapedListing | null>(null)
-  const [scrapeError, setScrapeError] = useState<string | null>(null)
-  const [showPaste, setShowPaste] = useState(false)
+  const [discoveredResources, setDiscoveredResources] = useState<ScrapedResource[]>([])
+  const [addingAll, setAddingAll] = useState(false)
+  const [addingIds, setAddingIds] = useState<Set<string>>(new Set())
 
   /* ============================================================
    *  IMPORT — drag/drop + parse CSV / XLSX
@@ -115,7 +127,7 @@ export default function PropertyDataHubPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "property-import-template.csv"
+    a.download = "resource-import-template.csv"
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -161,11 +173,11 @@ export default function PropertyDataHubPage() {
     setImportProgress(0)
     const total = parsedRows.length
     const batchSize = 25
-    appendLog("IMPORT", "INFO", `Starting import of ${total.toLocaleString()} rows (batch size 25)`)
+    appendLog("IMPORT", "INFO", `Starting import of ${total.toLocaleString()} resources (batch size 25)`)
 
     for (let i = 0; i < total; i += batchSize) {
       if (stopImportRef.current) {
-        appendLog("IMPORT", "WARN", `Import stopped by user at row ${i.toLocaleString()} of ${total.toLocaleString()}`)
+        appendLog("IMPORT", "WARN", `Import stopped by user at row ${i.toLocaleString()}`)
         break
       }
       const upper = Math.min(i + batchSize, total)
@@ -176,7 +188,7 @@ export default function PropertyDataHubPage() {
     setImportProgress(100)
     setImportStatus("done")
     if (!stopImportRef.current) {
-      appendLog("IMPORT", "SUCCESS", `Import complete — ${total.toLocaleString()} rows processed`)
+      appendLog("IMPORT", "SUCCESS", `Import complete — ${total.toLocaleString()} resources processed`)
     }
   }
 
@@ -194,16 +206,8 @@ export default function PropertyDataHubPage() {
   }
 
   /* ============================================================
-   *  AUDIT — call auditUnifiedBatch() in a loop until done
+   *  AUDIT — call auditResourceBatch() in a loop until done
    * ============================================================ */
-
-  const mapAuditLevel = (level: AuditLogLine["level"]): LogStatus => {
-    if (level === "FIXED") return "FIXED"
-    if (level === "SUCCESS") return "SUCCESS"
-    if (level === "ERROR") return "ERROR"
-    if (level === "WARN") return "WARN"
-    return "INFO"
-  }
 
   const runAudit = async () => {
     stopAuditRef.current = false
@@ -213,26 +217,26 @@ export default function PropertyDataHubPage() {
     setAuditFailed(0)
 
     try {
-      const total = await getUnifiedAuditTotal()
+      const total = await getResourceAuditTotal()
       setAuditTotal(total)
-      appendLog(
-        "AUDIT",
-        "INFO",
-        `Starting System Audit of ${total.toLocaleString()} records (batch size 25)`,
-      )
+      appendLog("AUDIT", "INFO", `Starting Resource Audit of ${total.toLocaleString()} records (batch size 25)`)
+
       let offset = 0
       while (true) {
         if (stopAuditRef.current) {
           appendLog("AUDIT", "WARN", `Audit stopped by user at row ${offset.toLocaleString()}`)
           break
         }
-        const res = await auditUnifiedBatch(offset, 25)
+
+        const res = await auditResourceBatch(offset, 25)
         setAuditScanned((p) => p + res.scanned)
         setAuditFixed((p) => p + res.fixed)
         setAuditFailed((p) => p + res.failed)
+
         for (const line of res.logs) {
-          appendLog("AUDIT", mapAuditLevel(line.level), line.message)
+          appendLog("AUDIT", mapLevel(line.level), line.message)
         }
+
         if (res.nextOffset === null) {
           appendLog("AUDIT", "SUCCESS", `Audit complete — scanned ${total.toLocaleString()} records`)
           break
@@ -261,46 +265,77 @@ export default function PropertyDataHubPage() {
   const auditPct = auditTotal && auditTotal > 0 ? Math.min(100, Math.round((auditScanned / auditTotal) * 100)) : 0
 
   /* ============================================================
-   *  SCRAPE — POST /api/scrape (URL or pasted HTML)
+   *  SCRAPER — Multi-resource directory parsing
    * ============================================================ */
 
-  const runScrape = async (mode: "url" | "paste") => {
+  const runScrape = async () => {
+    if (!scrapeUrl) return
     setScraping(true)
-    setScrapeListing(null)
-    setScrapeError(null)
-    const sourceLabel = mode === "url" ? scrapeUrl : "Easy Paste fallback"
-    appendLog("SCRAPE", "INFO", `Fetching: ${sourceLabel}`)
+    setDiscoveredResources([])
+    appendLog("SCRAPE", "INFO", `Starting directory scrape: ${scrapeUrl}`)
+
     try {
-      const body = mode === "url" ? { url: scrapeUrl } : { html: pasteHtml }
-      const res = await fetch("/api/scrape", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        const msg = data.error + (data.hint ? ` — ${data.hint}` : "")
-        setScrapeError(msg)
-        appendLog("SCRAPE", "ERROR", `${mode === "url" ? "URL" : "Easy Paste"} failed: ${data.error}`)
-        if (data.hint && mode === "url") {
-          setShowPaste(true)
-          appendLog("SCRAPE", "WARN", `Site appears blocked — opening Easy Paste fallback`)
-        }
-      } else {
-        const listing = data.listing as ScrapedListing
-        setScrapeListing(listing)
-        const addr = listing.address ?? listing.title ?? "Untitled listing"
-        const matchTag = listing.matched_property_address ? ` (matched Atlas: ${listing.matched_property_address})` : ""
-        appendLog("SCRAPE", "SUCCESS", `Scraped: ${addr}${matchTag}`)
+      const result = await scrapeResourceDirectory(scrapeUrl)
+      for (const line of result.logs) {
+        appendLog("SCRAPE", mapLevel(line.level), line.message)
+      }
+      if (result.success) {
+        setDiscoveredResources(result.resources)
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Network error"
-      setScrapeError(msg)
-      appendLog("SCRAPE", "ERROR", `Network error: ${msg}`)
+      const msg = e instanceof Error ? e.message : "Unknown error"
+      appendLog("SCRAPE", "ERROR", `Scrape failed: ${msg}`)
     } finally {
       setScraping(false)
     }
   }
+
+  const addAllResources = async () => {
+    const newResources = discoveredResources.filter((r) => r.status === "new")
+    if (newResources.length === 0) return
+
+    setAddingAll(true)
+    try {
+      const result = await addDiscoveredResources(newResources)
+      for (const line of result.logs) {
+        appendLog("IMPORT", mapLevel(line.level), line.message)
+      }
+      setDiscoveredResources((prev) =>
+        prev.map((r) => (r.status === "new" ? { ...r, status: "existing" as const } : r)),
+      )
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error"
+      appendLog("IMPORT", "ERROR", `Batch add failed: ${msg}`)
+    } finally {
+      setAddingAll(false)
+    }
+  }
+
+  const addSingleResource = async (resource: ScrapedResource, index: number) => {
+    const key = `${index}`
+    setAddingIds((prev) => new Set([...prev, key]))
+
+    try {
+      const result = await addDiscoveredResources([resource])
+      for (const line of result.logs) {
+        appendLog("IMPORT", mapLevel(line.level), line.message)
+      }
+      setDiscoveredResources((prev) =>
+        prev.map((r, i) => (i === index ? { ...r, status: "existing" as const } : r)),
+      )
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Unknown error"
+      appendLog("IMPORT", "ERROR", `Add failed: ${msg}`)
+    } finally {
+      setAddingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(key)
+        return next
+      })
+    }
+  }
+
+  const newCount = discoveredResources.filter((r) => r.status === "new").length
 
   /* ============================================================
    *  CARD CONTENTS
@@ -308,7 +343,19 @@ export default function PropertyDataHubPage() {
 
   const importCard = (
     <AdminCard title="Import" subtitle="Excel or CSV upload" icon={Upload}>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <SelectTrigger className="w-full sm:w-48 border-slate-200 bg-white">
+            <SelectValue placeholder="Category (optional)" />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button variant="outline" size="sm" onClick={downloadTemplate} className="gap-1.5 bg-white text-xs">
           <Download className="h-3.5 w-3.5" /> Template
         </Button>
@@ -364,7 +411,7 @@ export default function PropertyDataHubPage() {
             <span className="font-semibold text-slate-900">{parsedRows.length.toLocaleString()}</span>
           </div>
           <Button onClick={handleImport} className="w-full gap-1.5 bg-slate-900 hover:bg-slate-800">
-            <Upload className="h-4 w-4" /> Import {parsedRows.length} Rows
+            <Upload className="h-4 w-4" /> Import {parsedRows.length} Resources
           </Button>
         </div>
       )}
@@ -386,7 +433,7 @@ export default function PropertyDataHubPage() {
         <div className="mt-4 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs">
           <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
           <div>
-            <p className="font-medium text-slate-900">Imported {parsedRows.length} rows</p>
+            <p className="font-medium text-slate-900">Imported {parsedRows.length} resources</p>
             <button onClick={resetImport} className="mt-1 text-emerald-700 hover:underline">
               Import another file
             </button>
@@ -399,14 +446,14 @@ export default function PropertyDataHubPage() {
   const auditCard = (
     <AdminCard
       title="Audit"
-      subtitle="Self-healing data scan"
+      subtitle="Website verification scan"
       icon={ShieldCheck}
       badge={auditRunning ? "Running" : undefined}
       badgeVariant="running"
     >
       <p className="mb-3 text-xs text-slate-500 sm:mb-4">
-        Streams every record through a unified pipeline in batches of 25. Pass A intercepts ordinal typos,
-        Pass B runs web-search lookups, Pass C writes a single unified update per row.
+        Verifies each resource still exists by checking website availability, standardizes phone formats,
+        trims whitespace, and flags outdated records.
       </p>
 
       <div className="mb-3 grid grid-cols-3 gap-1.5 sm:mb-4 sm:gap-2">
@@ -435,7 +482,7 @@ export default function PropertyDataHubPage() {
         {!auditRunning ? (
           <Button onClick={runAudit} className="flex-1 gap-1.5 bg-slate-900 hover:bg-slate-800">
             <Play className="h-4 w-4" />
-            Run System Audit
+            Run Resource Audit
           </Button>
         ) : (
           <Button onClick={stopAudit} variant="outline" className="flex-1 gap-1.5 bg-white">
@@ -455,11 +502,11 @@ export default function PropertyDataHubPage() {
   )
 
   const scrapeCard = (
-    <AdminCard title="Scrape & Discovery" subtitle="URL or Easy Paste" icon={Globe}>
+    <AdminCard title="Scrape & Discovery" subtitle="Multi-resource directory parser" icon={Globe}>
       {/* URL input */}
       <div className="space-y-2">
         <label className="flex items-center gap-1.5 text-xs font-medium text-slate-900">
-          <Link2 className="h-3.5 w-3.5" /> Listing URL
+          <Link2 className="h-3.5 w-3.5" /> Directory URL
         </label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
@@ -471,7 +518,7 @@ export default function PropertyDataHubPage() {
             className="min-h-[44px] flex-1 border-slate-200 bg-white text-base sm:min-h-0 sm:text-sm"
           />
           <Button
-            onClick={() => runScrape("url")}
+            onClick={runScrape}
             disabled={!scrapeUrl || scraping}
             className="min-h-[44px] gap-1.5 bg-slate-900 hover:bg-slate-800 sm:min-h-0"
           >
@@ -481,97 +528,82 @@ export default function PropertyDataHubPage() {
         </div>
       </div>
 
-      {/* Easy Paste toggle */}
-      <button
-        onClick={() => setShowPaste((p) => !p)}
-        className="mt-3 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900"
-      >
-        <ClipboardPaste className="h-3.5 w-3.5" />
-        {showPaste ? "Hide" : "Show"} Easy Paste
-      </button>
+      <p className="mt-2 text-[10px] text-slate-500">
+        Enter a directory page URL (e.g., food bank listing). The scraper will extract each resource individually.
+      </p>
 
-      {showPaste && (
-        <div className="mt-3 space-y-2">
-          <Textarea
-            placeholder="Paste HTML or listing text here…"
-            value={pasteHtml}
-            onChange={(e) => setPasteHtml(e.target.value)}
-            rows={4}
-            className="border-slate-200 bg-white text-xs"
-          />
-          <Button
-            onClick={() => runScrape("paste")}
-            disabled={!pasteHtml || scraping}
-            variant="outline"
-            className="w-full gap-1.5 bg-white"
-          >
-            {scraping ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardPaste className="h-4 w-4" />}
-            Parse Pasted Content
-          </Button>
-        </div>
-      )}
-
-      {scrapeError && (
-        <p className="mt-3 flex items-start text-xs text-rose-600">
-          <XCircle className="mr-1.5 mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {scrapeError}
-        </p>
-      )}
-
-      {scrapeListing && (
-        <div className="mt-4 space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex-1">
-              <p className="font-semibold text-slate-900">{scrapeListing.title ?? "Untitled listing"}</p>
-              {(scrapeListing.address || scrapeListing.city) && (
-                <p className="mt-0.5 text-slate-500">
-                  {[scrapeListing.address, scrapeListing.city, scrapeListing.state, scrapeListing.zip_code]
-                    .filter(Boolean)
-                    .join(", ")}
-                </p>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {scrapeListing.matched_property_id && (
-                <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-50">
-                  Atlas Match
-                </Badge>
-              )}
-              <Badge
-                variant="outline"
-                className={
-                  scrapeListing.confidence >= 70
-                    ? "border-emerald-300 text-emerald-700"
-                    : scrapeListing.confidence >= 40
-                      ? "border-amber-300 text-amber-700"
-                      : "border-rose-300 text-rose-700"
-                }
+      {/* Discovery Table */}
+      {discoveredResources.length > 0 && (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-slate-900">
+              Found {discoveredResources.length} resources ({newCount} new)
+            </p>
+            {newCount > 0 && (
+              <Button
+                size="sm"
+                onClick={addAllResources}
+                disabled={addingAll}
+                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
               >
-                {scrapeListing.confidence}% confidence
-              </Badge>
-            </div>
+                {addingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlusCircle className="h-3.5 w-3.5" />}
+                Add All ({newCount})
+              </Button>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-slate-200 pt-2 sm:grid-cols-4">
-            {scrapeListing.price !== null && (
-              <div className="text-slate-500">
-                Rent: <span className="font-semibold text-slate-900">${scrapeListing.price.toLocaleString()}</span>
-              </div>
-            )}
-            {scrapeListing.bedrooms !== null && (
-              <div className="text-slate-500">
-                Beds: <span className="font-semibold text-slate-900">{scrapeListing.bedrooms === 0 ? "Studio" : scrapeListing.bedrooms}</span>
-              </div>
-            )}
-            {scrapeListing.bathrooms !== null && (
-              <div className="text-slate-500">
-                Baths: <span className="font-semibold text-slate-900">{scrapeListing.bathrooms}</span>
-              </div>
-            )}
-            {scrapeListing.square_feet !== null && (
-              <div className="text-slate-500">
-                Sq ft: <span className="font-semibold text-slate-900">{scrapeListing.square_feet.toLocaleString()}</span>
-              </div>
-            )}
+          <div className="max-h-[200px] overflow-y-auto rounded-md border border-slate-200">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-slate-100">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-medium text-slate-700">Name</th>
+                  <th className="px-2 py-1.5 text-left font-medium text-slate-700 hidden sm:table-cell">Address</th>
+                  <th className="px-2 py-1.5 text-left font-medium text-slate-700 hidden sm:table-cell">Phone</th>
+                  <th className="px-2 py-1.5 text-center font-medium text-slate-700">Status</th>
+                  <th className="px-2 py-1.5 text-center font-medium text-slate-700">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {discoveredResources.map((resource, i) => (
+                  <tr key={i} className="bg-white hover:bg-slate-50">
+                    <td className="px-2 py-1.5 text-slate-900">{resource.name}</td>
+                    <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.address || "-"}</td>
+                    <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.phone || "-"}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      <Badge
+                        variant="outline"
+                        className={
+                          resource.status === "new"
+                            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                            : "border-slate-300 bg-slate-50 text-slate-500"
+                        }
+                      >
+                        {resource.status === "new" ? "New" : "Existing"}
+                      </Badge>
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      {resource.status === "new" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => addSingleResource(resource, i)}
+                          disabled={addingIds.has(`${i}`)}
+                          className="h-7 w-7 p-0"
+                        >
+                          {addingIds.has(`${i}`) ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <PlusCircle className="h-3.5 w-3.5 text-emerald-600" />
+                          )}
+                        </Button>
+                      ) : (
+                        <Check className="mx-auto h-3.5 w-3.5 text-slate-400" />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -580,9 +612,9 @@ export default function PropertyDataHubPage() {
 
   return (
     <AdminHubLayout
-      title="Property Data Hub"
-      description="Import, audit, and scrape property records — all in one place."
-      breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Property Data Hub" }]}
+      title="Resource Data Hub"
+      description="Manage community services — import, audit, and discover resources."
+      breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Resource Data Hub" }]}
       importCard={importCard}
       auditCard={auditCard}
       scrapeCard={scrapeCard}

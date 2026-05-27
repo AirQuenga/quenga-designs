@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowRight, HeartHandshake, Phone, Clock, MapPin } from "lucide-react"
 import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
+import { RentalMapPreview } from "@/components/rental-map-preview"
 
 export default function Home() {
   return (
@@ -69,11 +70,7 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            <div className="relative aspect-video rounded-xl overflow-hidden bg-gradient-to-br from-primary to-slate-700 shadow-xl border border-border">
-              <div className="absolute inset-0 flex items-center justify-center text-primary-foreground/20 text-9xl font-bold tracking-tight">
-                MAP
-              </div>
-            </div>
+            <RentalMapPreview />
           </div>
         </div>
       </section>

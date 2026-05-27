@@ -171,21 +171,38 @@ function runPassA(row: PropertyRow): PassAResult {
  *  PASS B — Fuzzy Web Search (with fallback)
  * ============================================================ */
 
+// Coercion-friendly schema — accepts string-typed numbers from the AI and
+// gracefully nulls out anything unparseable so a single bad field never
+// poisons the whole record.
+const numLike = z
+  .union([z.number(), z.string(), z.null()])
+  .transform((v) => {
+    if (v === null || v === "") return null
+    const n = typeof v === "number" ? v : Number(String(v).replace(/[^0-9.\-]/g, ""))
+    return Number.isFinite(n) ? n : null
+  })
+  .nullable()
+
+const strLike = z
+  .union([z.string(), z.number(), z.null()])
+  .transform((v) => (v === null || v === "" ? null : String(v)))
+  .nullable()
+
 const ExtractedSchema = z.object({
-  address: z.string().nullable(),
-  city: z.string().nullable(),
-  state: z.string().nullable(),
-  zip: z.string().nullable(),
-  apn: z.string().nullable(),
-  bedrooms: z.number().nullable(),
-  bathrooms: z.number().nullable(),
-  square_feet: z.number().nullable(),
-  rent: z.number().nullable(),
-  available_date: z.string().nullable(),
-  management_company: z.string().nullable(),
-  notes: z.string().nullable(),
-  source_url: z.string().nullable(),
-  confidence: z.enum(["high", "medium", "low", "none"]),
+  address: strLike,
+  city: strLike,
+  state: strLike,
+  zip: strLike,
+  apn: strLike,
+  bedrooms: numLike,
+  bathrooms: numLike,
+  square_feet: numLike,
+  rent: numLike,
+  available_date: strLike,
+  management_company: strLike,
+  notes: strLike,
+  source_url: strLike,
+  confidence: z.enum(["high", "medium", "low", "none"]).catch("none"),
 })
 
 type Extracted = z.infer<typeof ExtractedSchema>

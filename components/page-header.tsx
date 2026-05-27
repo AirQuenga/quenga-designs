@@ -1,6 +1,6 @@
 import React from "react"
 import Link from "next/link"
-import { Home } from "lucide-react"
+import { Home, ChevronRight } from "lucide-react"
 
 interface BreadcrumbItem {
   label: string
@@ -12,45 +12,68 @@ interface PageHeaderProps {
   description?: string
   breadcrumbs?: BreadcrumbItem[]
   children?: React.ReactNode
+  /** Use compact layout for admin pages (smaller title, tighter spacing) */
+  compact?: boolean
 }
 
-export function PageHeader({ title, description, breadcrumbs = [], children }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  breadcrumbs = [],
+  children,
+  compact = false,
+}: PageHeaderProps) {
   return (
-    <div className="py-16">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 mb-12">
-        <Link 
-          href="/" 
-          className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+    <div className={compact ? "py-6" : "py-16"}>
+      {/* Directory-style Breadcrumb */}
+      <nav
+        className="mb-6 flex items-center gap-1.5 text-sm text-slate-500"
+        aria-label="Breadcrumb"
+      >
+        <Link
+          href="/"
+          className="flex items-center gap-1 rounded-md px-1.5 py-1 transition-colors hover:bg-slate-100 hover:text-slate-900"
           aria-label="Home"
         >
           <Home className="h-4 w-4" />
         </Link>
         {breadcrumbs.map((item, index) => (
-          <span key={index} className="flex items-center gap-2">
-            <span aria-hidden="true">/</span>
+          <React.Fragment key={index}>
+            <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" aria-hidden="true" />
             {item.href ? (
-              <Link 
-                href={item.href} 
-                className="hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+              <Link
+                href={item.href}
+                className="rounded-md px-1.5 py-1 transition-colors hover:bg-slate-100 hover:text-slate-900"
               >
                 {item.label}
               </Link>
             ) : (
-              <span>{item.label}</span>
+              <span className="px-1.5 py-1 font-medium text-slate-900">{item.label}</span>
             )}
-          </span>
+          </React.Fragment>
         ))}
       </nav>
 
       {/* Title and optional actions */}
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-semibold tracking-tight leading-none mb-4">
+          <h1
+            className={
+              compact
+                ? "text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl lg:text-4xl"
+                : "text-5xl font-semibold tracking-tight leading-none text-slate-900 sm:text-6xl md:text-7xl lg:text-8xl mb-4"
+            }
+          >
             {title}
           </h1>
           {description && (
-            <p className="text-lg sm:text-xl text-gray-600 dark:text-gray-400 max-w-2xl">
+            <p
+              className={
+                compact
+                  ? "mt-1 text-sm text-slate-500 sm:mt-2 sm:text-base max-w-2xl"
+                  : "text-lg text-slate-500 sm:text-xl max-w-2xl"
+              }
+            >
               {description}
             </p>
           )}
