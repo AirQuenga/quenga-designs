@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Settings, FileUp, Users, Shield, Activity, ShieldCheck, Code2 } from "lucide-react"
+import { Settings, FileUp, Users, Shield, Activity, ShieldCheck, Code2, HeartHandshake } from "lucide-react"
 import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
 import { PageHeader } from "@/components/page-header"
@@ -92,6 +92,42 @@ export default function AdminPage() {
                 </div>
                 <div className="text-muted-foreground">
                   Copilot: <span className="font-semibold text-foreground">AI SDK 6</span>
+                </div>
+              </div>
+            </Link>
+
+            {/* Resource Data Hub (Community Services) */}
+            <Link
+              href="/admin/resources"
+              className="group relative bg-card border border-border rounded-3xl p-8 transition-all hover:border-muted-foreground/30 hover:shadow-xl cursor-pointer"
+            >
+              <div className="absolute top-8 right-8">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400">
+                  Discovery Mode
+                </span>
+              </div>
+
+              <div className="mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center mb-4">
+                  <HeartHandshake className="h-7 w-7 text-rose-600 dark:text-rose-400" />
+                </div>
+              </div>
+
+              <h3 className="text-2xl font-semibold mb-3 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
+                Resource Data Hub
+              </h3>
+
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                Manage community services — manual entry, multi-resource directory scraping, and automated data
+                auditing with website verification.
+              </p>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="text-muted-foreground">
+                  Scraper: <span className="font-semibold text-foreground">Multi-Resource</span>
+                </div>
+                <div className="text-muted-foreground">
+                  Audit: <span className="font-semibold text-foreground">Link Checker</span>
                 </div>
               </div>
             </Link>
