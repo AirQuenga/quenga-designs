@@ -31,7 +31,7 @@ import {
 import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
-import { ResourceRepairTable } from "@/components/admin/resource-repair-table"
+import { ConsolidatedResourceRepair } from "@/components/admin/consolidated-resource-repair"
 import {
   scrapeResourceDirectory,
   addDiscoveredResources,
@@ -39,7 +39,7 @@ import {
   getResourceAuditTotal,
   type ScrapedResource,
   type ResourceLogLine,
-  type PendingResourceFix,
+  type PendingResourceRepair,
 } from "@/app/actions/resource-hub"
 
 const CATEGORIES = [
@@ -89,7 +89,8 @@ export default function ResourceDataHubPage() {
   const [auditFixed, setAuditFixed] = useState(0)
   const [auditFailed, setAuditFailed] = useState(0)
   const [auditRunning, setAuditRunning] = useState(false)
-  const [pendingFixes, setPendingFixes] = useState<PendingResourceFix[]>([])
+  const [pendingRepairs, setPendingRepairs] = useState<PendingResourceRepair[]>([])
+  const [focusRepairId, setFocusRepairId] = useState<string | null>(null)
   const stopAuditRef = useRef(false)
 
   /* ---------- UNIFIED LOG state ---------- */
@@ -218,7 +219,7 @@ export default function ResourceDataHubPage() {
     setAuditScanned(0)
     setAuditFixed(0)
     setAuditFailed(0)
-    setPendingFixes([])
+    setPendingRepairs([])
 
     try {
       const total = await getResourceAuditTotal()
@@ -237,8 +238,8 @@ export default function ResourceDataHubPage() {
         setAuditFixed((p) => p + res.fixed)
         setAuditFailed((p) => p + res.failed)
 
-        if (res.pendingFixes && res.pendingFixes.length > 0) {
-          setPendingFixes((prev) => [...prev, ...res.pendingFixes!])
+        if (res.pendingRepairs && res.pendingRepairs.length > 0) {
+          setPendingRepairs((prev) => [...prev, ...res.pendingRepairs!])
         }
 
         for (const line of res.logs) {
@@ -631,27 +632,36 @@ export default function ResourceDataHubPage() {
           entries={logs}
           onClear={clearLogs}
           height={280}
-          pendingRepairsCount={pendingFixes.length}
+          pendingRepairsCount={pendingRepairs.length}
           onJumpToRepairs={() => {
             const el = document.getElementById("repair-console")
             if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
           }}
+          onEntryClick={(entry) => {
+            // If the log entry references a resource that's pending repair, focus + scroll
+            const match = pendingRepairs.find((r) => entry.message.includes(`"${r.resourceName}"`))
+            if (match) {
+              setFocusRepairId(match.resourceId)
+              const el = document.getElementById(`repair-${match.resourceId}`)
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" })
+              } else {
+                const console = document.getElementById("repair-console")
+                if (console) console.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            }
+          }}
         />
       }
     >
-      {pendingFixes.length > 0 && (
+      {pendingRepairs.length > 0 && (
         <div id="repair-console" className="mt-6 sm:mt-8">
-          <div className="mb-3 flex flex-col gap-1">
-            <h2 className="text-base font-semibold text-slate-900">Active Repair Console</h2>
-            <p className="text-xs text-slate-500">
-              Review AI-suggested fixes for missing or invalid fields. Apply, edit, or deny each warning.
-            </p>
-          </div>
-          <ResourceRepairTable
-            fixes={pendingFixes}
-            onFixApplied={(_id, message) => appendLog("AUDIT", "FIXED", message)}
-            onFixDenied={(_id, message) => appendLog("AUDIT", "WARN", message)}
-            onFixError={(_id, message) => appendLog("AUDIT", "ERROR", message)}
+          <ConsolidatedResourceRepair
+            repairs={pendingRepairs}
+            focusResourceId={focusRepairId}
+            onSaved={(_id, message) => appendLog("AUDIT", "FIXED", message)}
+            onError={(_id, message) => appendLog("AUDIT", "ERROR", message)}
+            onDismissed={(_id, message) => appendLog("AUDIT", "WARN", message)}
           />
         </div>
       )}

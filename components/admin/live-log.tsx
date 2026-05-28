@@ -23,6 +23,8 @@ interface LiveLogProps {
   onJumpToRepairs?: (status: "WARN" | "ERROR") => void
   /** Number of pending repair items, shown next to a "Jump to Repairs" link */
   pendingRepairsCount?: number
+  /** Called when user clicks an individual log entry (for jumping to repair dropdown) */
+  onEntryClick?: (entry: LogEntry) => void
 }
 
 const STATUS_STYLES: Record<LogStatus, { dot: string; badge: string; chip: string; chipActive: string }> = {
@@ -95,7 +97,7 @@ function formatTimestampShort(ts: number): string {
   })
 }
 
-export function LiveLog({ entries, onClear, height = 280, onJumpToRepairs, pendingRepairsCount = 0 }: LiveLogProps) {
+export function LiveLog({ entries, onClear, height = 280, onJumpToRepairs, pendingRepairsCount = 0, onEntryClick }: LiveLogProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
   const [filter, setFilter] = useState<FilterType>("ALL")
@@ -247,8 +249,17 @@ export function LiveLog({ entries, onClear, height = 280, onJumpToRepairs, pendi
           <ul className="space-y-1.5 sm:space-y-1">
             {filteredEntries.map((entry) => {
               const styles = STATUS_STYLES[entry.status]
+              const clickable = !!onEntryClick && (entry.status === "WARN" || entry.status === "ERROR")
               return (
-                <li key={entry.id} className="flex flex-wrap items-start gap-1 sm:flex-nowrap sm:gap-2">
+                <li
+                  key={entry.id}
+                  onClick={clickable ? () => onEntryClick!(entry) : undefined}
+                  className={`flex flex-wrap items-start gap-1 sm:flex-nowrap sm:gap-2 ${
+                    clickable
+                      ? "cursor-pointer rounded-md px-1 -mx-1 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+                      : ""
+                  }`}
+                >
                   {/* Timestamp */}
                   <span className="flex-shrink-0 select-none font-mono text-[10px] text-slate-400 dark:text-slate-500 sm:mt-0.5 sm:text-slate-500">
                     <span className="hidden sm:inline">[{formatTimestamp(entry.timestamp)}]</span>

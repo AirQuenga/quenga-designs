@@ -1,7 +1,7 @@
 "use server"
 
 import * as cheerio from "cheerio"
-import { streamObject, generateObject } from "ai"
+import { streamObject } from "ai"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import type { CommunityService } from "./get-community-services"
@@ -43,21 +43,32 @@ export interface AuditResourceBatchResult {
   failed: number
   logs: ResourceLogLine[]
   nextOffset: number | null
-  pendingFixes?: PendingResourceFix[]
+  pendingRepairs?: PendingResourceRepair[]
 }
 
 export type ResourceFieldName = "address" | "phone_number" | "website" | "hours" | "category"
 
-export interface PendingResourceFix {
-  id: string                       // unique id (resourceId:field)
+export interface SearchSnippet {
+  title: string
+  url: string
+  snippet: string
+}
+
+export interface PendingResourceRepair {
   resourceId: string
   resourceName: string
-  field: ResourceFieldName
-  originalValue: string | null     // current DB value (or "404 Not Found")
-  suggestedValue: string | null    // AI suggestion (null = manual required)
-  confidence: number               // 0-100
-  reason: string                   // why flagged
-  status: "WARN" | "PENDING" | "FIXED"
+  category: string | null
+  currentValues: {
+    address: string | null
+    phone_number: string | null
+    website: string | null
+    hours: string | null
+    category: string | null
+  }
+  missingFields: ResourceFieldName[]
+  reasons: Partial<Record<ResourceFieldName, string>>
+  searchUrl: string
+  searchResults: SearchSnippet[]
 }
 
 export interface ApplyFixResult {
@@ -676,7 +687,7 @@ export async function getResourceAuditTotal(): Promise<number> {
 export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<AuditResourceBatchResult> {
   const logs: ResourceLogLine[] = []
   const supabase = await createClient()
-  const pendingFixes: PendingResourceFix[] = []
+  const pendingRepairs: PendingResourceRepair[] = []
 
   const { data: rows, error } = await supabase
     .from("community_services")
@@ -686,11 +697,11 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
 
   if (error) {
     logs.push({ level: "ERROR", message: `Fetch failed: ${error.message}` })
-    return { scanned: 0, fixed: 0, failed: 1, logs, nextOffset: null, pendingFixes: [] }
+    return { scanned: 0, fixed: 0, failed: 1, logs, nextOffset: null, pendingRepairs: [] }
   }
 
   if (!rows || rows.length === 0) {
-    return { scanned: 0, fixed: 0, failed: 0, logs, nextOffset: null, pendingFixes: [] }
+    return { scanned: 0, fixed: 0, failed: 0, logs, nextOffset: null, pendingRepairs: [] }
   }
 
   let fixed = 0
@@ -699,9 +710,10 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
   for (const row of rows) {
     const updates: Record<string, unknown> = {}
     const fixes: string[] = []
-    const missingFields: { field: ResourceFieldName; original: string | null; reason: string }[] = []
+    const missingFields: ResourceFieldName[] = []
+    const reasons: Partial<Record<ResourceFieldName, string>> = {}
 
-    // ── 1. Validate website (404 detection) ─────────────────────────────────
+    // ── 1. Validate website (404 detection, no AI) ──────────────────────────
     if (row.website) {
       let websiteOk = true
       let statusCode = 0
@@ -712,79 +724,43 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
           redirect: "follow",
         })
         statusCode = check.status
-        if (!check.ok) {
-          websiteOk = false
-          logs.push({
-            level: "WARN",
-            message: `"${row.resource_name}" website returned ${check.status}`,
-          })
-        }
+        if (!check.ok) websiteOk = false
       } catch {
         websiteOk = false
-        logs.push({
-          level: "WARN",
-          message: `"${row.resource_name}" website unreachable`,
-        })
       }
       if (!websiteOk) {
-        missingFields.push({
-          field: "website",
-          original: row.website,
-          reason: statusCode === 404 ? "404 Not Found" : statusCode > 0 ? `HTTP ${statusCode}` : "Unreachable",
-        })
+        missingFields.push("website")
+        reasons.website =
+          statusCode === 404
+            ? "404 Not Found"
+            : statusCode > 0
+              ? `HTTP ${statusCode}`
+              : "Unreachable"
       }
     } else {
-      missingFields.push({ field: "website", original: null, reason: "Missing website" })
+      missingFields.push("website")
+      reasons.website = "Missing website"
     }
 
     // ── 2. Detect missing critical fields ───────────────────────────────────
     if (!row.address || row.address.trim().length === 0) {
-      missingFields.push({ field: "address", original: null, reason: "Missing address" })
+      missingFields.push("address")
+      reasons.address = "Missing address"
     }
     if (!row.phone_number || row.phone_number.trim().length === 0) {
-      missingFields.push({ field: "phone_number", original: null, reason: "Missing phone" })
+      missingFields.push("phone_number")
+      reasons.phone_number = "Missing phone"
     }
     if (!row.hours || row.hours.trim().length === 0) {
-      missingFields.push({ field: "hours", original: null, reason: "Missing hours" })
+      missingFields.push("hours")
+      reasons.hours = "Missing hours"
     }
     if (!row.category || row.category === "General Resources") {
-      missingFields.push({
-        field: "category",
-        original: row.category,
-        reason: row.category ? "Generic category — refine" : "Missing category",
-      })
+      missingFields.push("category")
+      reasons.category = row.category ? "Generic category — refine" : "Missing category"
     }
 
-    // ── 3. AI search-and-fill for missing fields ────────────────────────────
-    if (missingFields.length > 0) {
-      const suggestions = await searchAndSuggestFixes(row.resource_name, missingFields, row)
-      for (const sug of suggestions) {
-        pendingFixes.push({
-          id: `${row.id}:${sug.field}`,
-          resourceId: row.id,
-          resourceName: row.resource_name,
-          field: sug.field,
-          originalValue: sug.original,
-          suggestedValue: sug.suggested,
-          confidence: sug.confidence,
-          reason: sug.reason,
-          status: "WARN",
-        })
-        if (sug.suggested) {
-          logs.push({
-            level: "WARN",
-            message: `Suggested ${sug.field} for "${row.resource_name}": ${sug.suggested.slice(0, 60)}`,
-          })
-        } else {
-          logs.push({
-            level: "WARN",
-            message: `Manual intervention required: ${sug.field} for "${row.resource_name}"`,
-          })
-        }
-      }
-    }
-
-    // ── 4. Auto-cleanups (phone format, whitespace) ─────────────────────────
+    // ── 3. Auto-cleanups (phone format, whitespace) — still safe to do ──────
     if (row.phone_number) {
       const digits = row.phone_number.replace(/[^\d]/g, "")
       if (digits.length === 10) {
@@ -811,26 +787,56 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
     if (Object.keys(updates).length > 0) {
       updates.updated_at = new Date().toISOString()
       const { error: updateError } = await supabase.from("community_services").update(updates).eq("id", row.id)
-
       if (updateError) {
-        logs.push({ level: "ERROR", message: `Failed to update "${row.resource_name}": ${updateError.message}` })
+        logs.push({ level: "ERROR", message: `Failed to auto-fix "${row.resource_name}": ${updateError.message}` })
         failed++
       } else {
         logs.push({ level: "FIXED", message: `Auto-fixed "${row.resource_name}": ${fixes.join(", ")}` })
         fixed++
       }
     }
+
+    // ── 4. Direct web search for resources with missing fields ──────────────
+    if (missingFields.length > 0) {
+      const query = `${row.resource_name} Butte County California ${missingFields.includes("phone_number") ? "phone" : ""} ${missingFields.includes("address") ? "address" : ""}`
+        .replace(/\s+/g, " ")
+        .trim()
+      const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`
+      const searchResults = await searchWeb(query).catch(() => [])
+
+      pendingRepairs.push({
+        resourceId: row.id,
+        resourceName: row.resource_name,
+        category: row.category ?? null,
+        currentValues: {
+          address: row.address ?? null,
+          phone_number: row.phone_number ?? null,
+          website: row.website ?? null,
+          hours: row.hours ?? null,
+          category: row.category ?? null,
+        },
+        missingFields,
+        reasons,
+        searchUrl,
+        searchResults,
+      })
+
+      logs.push({
+        level: "WARN",
+        message: `"${row.resource_name}" needs repair (${missingFields.length} field${missingFields.length === 1 ? "" : "s"}): ${missingFields.join(", ")}`,
+      })
+    }
   }
 
   const nextOffset = rows.length === batchSize ? offset + batchSize : null
 
-  if (fixed === 0 && pendingFixes.length === 0 && failed === 0) {
+  if (fixed === 0 && pendingRepairs.length === 0 && failed === 0) {
     logs.push({ level: "INFO", message: `Scanned ${rows.length} resources — all valid` })
   }
-  if (pendingFixes.length > 0) {
+  if (pendingRepairs.length > 0) {
     logs.push({
       level: "WARN",
-      message: `${pendingFixes.length} pending fixes staged for repair console`,
+      message: `${pendingRepairs.length} resource${pendingRepairs.length === 1 ? "" : "s"} staged for repair`,
     })
   }
 
@@ -840,112 +846,84 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
     failed,
     logs,
     nextOffset,
-    pendingFixes,
+    pendingRepairs,
   }
 }
 
 /* -------------------------------------------------------------------------- */
-/*  AI Search-and-Fill — uses LLM to suggest plausible values                 */
+/*  Direct Web Search — DuckDuckGo HTML (no API key, no AI)                   */
 /* -------------------------------------------------------------------------- */
 
-const FixSuggestionSchema = z.object({
-  fixes: z.array(
-    z.object({
-      field: z.enum(["address", "phone_number", "website", "hours", "category"]),
-      suggested_value: z.string().nullable(),
-      confidence: z.number().min(0).max(100),
-      reasoning: z.string(),
-    }),
-  ),
-})
-
-async function searchAndSuggestFixes(
-  resourceName: string,
-  missing: { field: ResourceFieldName; original: string | null; reason: string }[],
-  row: { address?: string | null; phone_number?: string | null; website?: string | null; category?: string | null; notes?: string | null },
-): Promise<{ field: ResourceFieldName; original: string | null; suggested: string | null; confidence: number; reason: string }[]> {
-  if (missing.length === 0) return []
-
-  const knownContext = [
-    row.address ? `Address: ${row.address}` : null,
-    row.phone_number ? `Phone: ${row.phone_number}` : null,
-    row.website ? `Website: ${row.website}` : null,
-    row.category ? `Category: ${row.category}` : null,
-    row.notes ? `Notes: ${row.notes}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n")
-
-  const fieldsList = missing.map((m) => `- ${m.field} (${m.reason})`).join("\n")
-
+async function searchWeb(query: string): Promise<SearchSnippet[]> {
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
   try {
-    const { object } = await generateObject({
-      model: "openai/gpt-4o-mini",
-      schema: FixSuggestionSchema,
-      prompt: `You are an audit assistant for a community-services directory in Butte County, California.
-
-Resource Name: "${resourceName}"
-Known Context:
-${knownContext || "(no other fields known)"}
-
-Missing or invalid fields:
-${fieldsList}
-
-For each missing field, propose the most likely correct value based on the resource name and context. Use these rules:
-- For "category", choose ONE from: Food Assistance, Housing, Mental Health, Healthcare, Legal Aid, Employment, Family Services, Senior Services, Veteran Services, Substance Abuse, Disability Services, Utility Assistance, Education, Transportation, Material Goods, Domestic Violence, Immigration Services, General Resources.
-- For "phone_number", format as (XXX) XXX-XXXX. If unsure, return null.
-- For "website", return only well-formed https URLs. If unsure, return null.
-- For "address", prefer Butte County cities (Chico, Oroville, Paradise, Gridley, Magalia). If unsure, return null.
-- For "hours", use a short format like "Mon-Fri 9am-5pm". If unsure, return null.
-
-Confidence: 0-30 = guess, 31-70 = plausible, 71-100 = high confidence based on resource name.
-Return null for suggested_value if you cannot make a confident suggestion — that field will be marked "manual intervention required".`,
+    const res = await fetch(url, {
+      headers: BROWSER_HEADERS,
+      signal: AbortSignal.timeout(7000),
     })
+    if (!res.ok) return []
+    const html = await res.text()
+    const $ = cheerio.load(html)
+    const results: SearchSnippet[] = []
+    $(".result").each((_, el) => {
+      if (results.length >= 5) return
+      const titleEl = $(el).find(".result__a").first()
+      const title = titleEl.text().trim()
+      const rawHref = titleEl.attr("href") || ""
+      const snippet = $(el).find(".result__snippet").first().text().trim()
 
-    return missing.map((m) => {
-      const ai = object.fixes.find((f) => f.field === m.field)
-      return {
-        field: m.field,
-        original: m.original,
-        suggested: ai?.suggested_value ?? null,
-        confidence: ai?.confidence ?? 0,
-        reason: m.reason + (ai?.reasoning ? ` — ${ai.reasoning}` : ""),
+      // DuckDuckGo wraps URLs as /l/?uddg=<encoded>
+      let resolvedUrl = rawHref
+      try {
+        const u = new URL(rawHref, "https://duckduckgo.com")
+        const uddg = u.searchParams.get("uddg")
+        if (uddg) resolvedUrl = decodeURIComponent(uddg)
+      } catch {
+        // keep raw
+      }
+
+      if (title && resolvedUrl) {
+        results.push({ title, url: resolvedUrl, snippet })
       }
     })
-  } catch (e) {
-    // AI unavailable — return all as manual-intervention
-    return missing.map((m) => ({
-      field: m.field,
-      original: m.original,
-      suggested: null,
-      confidence: 0,
-      reason: `${m.reason} (AI unavailable: ${e instanceof Error ? e.message : "error"})`,
-    }))
+    return results
+  } catch {
+    return []
   }
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Apply / Approve a single repair fix                                       */
+/*  Apply grouped repair — writes multiple fields at once                     */
 /* -------------------------------------------------------------------------- */
 
-export async function applyResourceFix(
+export async function applyResourceRepair(
   resourceId: string,
-  field: ResourceFieldName,
-  newValue: string | null,
+  values: Partial<Record<ResourceFieldName, string | null>>,
 ): Promise<ApplyFixResult> {
   const supabase = await createClient()
 
-  const sanitized =
-    typeof newValue === "string" ? newValue.replace(/\s+/g, " ").trim() : newValue
-  const valueToWrite = sanitized && sanitized.length > 0 ? sanitized : null
+  const sanitized: Record<string, string | null> = {}
+  for (const [key, raw] of Object.entries(values)) {
+    if (typeof raw === "string") {
+      const trimmed = raw.replace(/\s+/g, " ").trim()
+      sanitized[key] = trimmed.length > 0 ? trimmed : null
+    } else {
+      sanitized[key] = null
+    }
+  }
+
+  if (Object.keys(sanitized).length === 0) {
+    return { success: false, message: "No fields supplied" }
+  }
 
   const { error } = await supabase
     .from("community_services")
-    .update({ [field]: valueToWrite, updated_at: new Date().toISOString() })
+    .update({ ...sanitized, updated_at: new Date().toISOString() })
     .eq("id", resourceId)
 
-  if (error) {
-    return { success: false, message: error.message }
+  if (error) return { success: false, message: error.message }
+  return {
+    success: true,
+    message: `Updated ${Object.keys(sanitized).join(", ")}`,
   }
-  return { success: true, message: `Updated ${field}` }
 }
