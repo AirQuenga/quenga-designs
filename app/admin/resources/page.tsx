@@ -31,6 +31,7 @@ import {
 import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
+import { ResourceRepairTable } from "@/components/admin/resource-repair-table"
 import {
   scrapeResourceDirectory,
   addDiscoveredResources,
@@ -38,6 +39,7 @@ import {
   getResourceAuditTotal,
   type ScrapedResource,
   type ResourceLogLine,
+  type PendingResourceFix,
 } from "@/app/actions/resource-hub"
 
 const CATEGORIES = [
@@ -87,6 +89,7 @@ export default function ResourceDataHubPage() {
   const [auditFixed, setAuditFixed] = useState(0)
   const [auditFailed, setAuditFailed] = useState(0)
   const [auditRunning, setAuditRunning] = useState(false)
+  const [pendingFixes, setPendingFixes] = useState<PendingResourceFix[]>([])
   const stopAuditRef = useRef(false)
 
   /* ---------- UNIFIED LOG state ---------- */
@@ -215,11 +218,12 @@ export default function ResourceDataHubPage() {
     setAuditScanned(0)
     setAuditFixed(0)
     setAuditFailed(0)
+    setPendingFixes([])
 
     try {
       const total = await getResourceAuditTotal()
       setAuditTotal(total)
-      appendLog("AUDIT", "INFO", `Starting Resource Audit of ${total.toLocaleString()} records (batch size 25)`)
+      appendLog("AUDIT", "INFO", `Starting Smart Audit of ${total.toLocaleString()} records (batch size 25)`)
 
       let offset = 0
       while (true) {
@@ -232,6 +236,10 @@ export default function ResourceDataHubPage() {
         setAuditScanned((p) => p + res.scanned)
         setAuditFixed((p) => p + res.fixed)
         setAuditFailed((p) => p + res.failed)
+
+        if (res.pendingFixes && res.pendingFixes.length > 0) {
+          setPendingFixes((prev) => [...prev, ...res.pendingFixes!])
+        }
 
         for (const line of res.logs) {
           appendLog("AUDIT", mapLevel(line.level), line.message)
@@ -618,7 +626,35 @@ export default function ResourceDataHubPage() {
       importCard={importCard}
       auditCard={auditCard}
       scrapeCard={scrapeCard}
-      log={<LiveLog entries={logs} onClear={clearLogs} height={280} />}
-    />
+      log={
+        <LiveLog
+          entries={logs}
+          onClear={clearLogs}
+          height={280}
+          pendingRepairsCount={pendingFixes.length}
+          onJumpToRepairs={() => {
+            const el = document.getElementById("repair-console")
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+          }}
+        />
+      }
+    >
+      {pendingFixes.length > 0 && (
+        <div id="repair-console" className="mt-6 sm:mt-8">
+          <div className="mb-3 flex flex-col gap-1">
+            <h2 className="text-base font-semibold text-slate-900">Active Repair Console</h2>
+            <p className="text-xs text-slate-500">
+              Review AI-suggested fixes for missing or invalid fields. Apply, edit, or deny each warning.
+            </p>
+          </div>
+          <ResourceRepairTable
+            fixes={pendingFixes}
+            onFixApplied={(_id, message) => appendLog("AUDIT", "FIXED", message)}
+            onFixDenied={(_id, message) => appendLog("AUDIT", "WARN", message)}
+            onFixError={(_id, message) => appendLog("AUDIT", "ERROR", message)}
+          />
+        </div>
+      )}
+    </AdminHubLayout>
   )
 }

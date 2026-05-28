@@ -1,7 +1,7 @@
 "use server"
 
 import * as cheerio from "cheerio"
-import { streamObject } from "ai"
+import { streamObject, generateObject } from "ai"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import type { CommunityService } from "./get-community-services"
@@ -43,6 +43,26 @@ export interface AuditResourceBatchResult {
   failed: number
   logs: ResourceLogLine[]
   nextOffset: number | null
+  pendingFixes?: PendingResourceFix[]
+}
+
+export type ResourceFieldName = "address" | "phone_number" | "website" | "hours" | "category"
+
+export interface PendingResourceFix {
+  id: string                       // unique id (resourceId:field)
+  resourceId: string
+  resourceName: string
+  field: ResourceFieldName
+  originalValue: string | null     // current DB value (or "404 Not Found")
+  suggestedValue: string | null    // AI suggestion (null = manual required)
+  confidence: number               // 0-100
+  reason: string                   // why flagged
+  status: "WARN" | "PENDING" | "FIXED"
+}
+
+export interface ApplyFixResult {
+  success: boolean
+  message: string
 }
 
 /* -------------------------------------------------------------------------- */
@@ -656,6 +676,7 @@ export async function getResourceAuditTotal(): Promise<number> {
 export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<AuditResourceBatchResult> {
   const logs: ResourceLogLine[] = []
   const supabase = await createClient()
+  const pendingFixes: PendingResourceFix[] = []
 
   const { data: rows, error } = await supabase
     .from("community_services")
@@ -665,11 +686,11 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
 
   if (error) {
     logs.push({ level: "ERROR", message: `Fetch failed: ${error.message}` })
-    return { scanned: 0, fixed: 0, failed: 1, logs, nextOffset: null }
+    return { scanned: 0, fixed: 0, failed: 1, logs, nextOffset: null, pendingFixes: [] }
   }
 
   if (!rows || rows.length === 0) {
-    return { scanned: 0, fixed: 0, failed: 0, logs, nextOffset: null }
+    return { scanned: 0, fixed: 0, failed: 0, logs, nextOffset: null, pendingFixes: [] }
   }
 
   let fixed = 0
@@ -678,41 +699,103 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
   for (const row of rows) {
     const updates: Record<string, unknown> = {}
     const fixes: string[] = []
+    const missingFields: { field: ResourceFieldName; original: string | null; reason: string }[] = []
 
-    // Check website validity
+    // ── 1. Validate website (404 detection) ─────────────────────────────────
     if (row.website) {
+      let websiteOk = true
+      let statusCode = 0
       try {
         const check = await fetch(row.website, {
           method: "HEAD",
           signal: AbortSignal.timeout(5000),
+          redirect: "follow",
         })
+        statusCode = check.status
         if (!check.ok) {
+          websiteOk = false
           logs.push({
             level: "WARN",
-            message: `"${row.resource_name}" website returned ${check.status} - marking for review`,
+            message: `"${row.resource_name}" website returned ${check.status}`,
           })
         }
       } catch {
+        websiteOk = false
         logs.push({
           level: "WARN",
-          message: `"${row.resource_name}" website unreachable - may be inactive`,
+          message: `"${row.resource_name}" website unreachable`,
         })
+      }
+      if (!websiteOk) {
+        missingFields.push({
+          field: "website",
+          original: row.website,
+          reason: statusCode === 404 ? "404 Not Found" : statusCode > 0 ? `HTTP ${statusCode}` : "Unreachable",
+        })
+      }
+    } else {
+      missingFields.push({ field: "website", original: null, reason: "Missing website" })
+    }
+
+    // ── 2. Detect missing critical fields ───────────────────────────────────
+    if (!row.address || row.address.trim().length === 0) {
+      missingFields.push({ field: "address", original: null, reason: "Missing address" })
+    }
+    if (!row.phone_number || row.phone_number.trim().length === 0) {
+      missingFields.push({ field: "phone_number", original: null, reason: "Missing phone" })
+    }
+    if (!row.hours || row.hours.trim().length === 0) {
+      missingFields.push({ field: "hours", original: null, reason: "Missing hours" })
+    }
+    if (!row.category || row.category === "General Resources") {
+      missingFields.push({
+        field: "category",
+        original: row.category,
+        reason: row.category ? "Generic category — refine" : "Missing category",
+      })
+    }
+
+    // ── 3. AI search-and-fill for missing fields ────────────────────────────
+    if (missingFields.length > 0) {
+      const suggestions = await searchAndSuggestFixes(row.resource_name, missingFields, row)
+      for (const sug of suggestions) {
+        pendingFixes.push({
+          id: `${row.id}:${sug.field}`,
+          resourceId: row.id,
+          resourceName: row.resource_name,
+          field: sug.field,
+          originalValue: sug.original,
+          suggestedValue: sug.suggested,
+          confidence: sug.confidence,
+          reason: sug.reason,
+          status: "WARN",
+        })
+        if (sug.suggested) {
+          logs.push({
+            level: "WARN",
+            message: `Suggested ${sug.field} for "${row.resource_name}": ${sug.suggested.slice(0, 60)}`,
+          })
+        } else {
+          logs.push({
+            level: "WARN",
+            message: `Manual intervention required: ${sug.field} for "${row.resource_name}"`,
+          })
+        }
       }
     }
 
-    // Standardize phone format
+    // ── 4. Auto-cleanups (phone format, whitespace) ─────────────────────────
     if (row.phone_number) {
       const digits = row.phone_number.replace(/[^\d]/g, "")
       if (digits.length === 10) {
-        const formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
-        if (formatted !== row.phone_number) {
-          updates.phone_number = formatted
+        const formattedPhone = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+        if (formattedPhone !== row.phone_number) {
+          updates.phone_number = formattedPhone
           fixes.push("phone format")
         }
       }
     }
 
-    // Trim whitespace from text fields
     const textFields = ["resource_name", "address", "hours", "notes"] as const
     for (const field of textFields) {
       const val = row[field]
@@ -725,7 +808,6 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
       }
     }
 
-    // Apply updates
     if (Object.keys(updates).length > 0) {
       updates.updated_at = new Date().toISOString()
       const { error: updateError } = await supabase.from("community_services").update(updates).eq("id", row.id)
@@ -734,7 +816,7 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
         logs.push({ level: "ERROR", message: `Failed to update "${row.resource_name}": ${updateError.message}` })
         failed++
       } else {
-        logs.push({ level: "FIXED", message: `Fixed "${row.resource_name}": ${fixes.join(", ")}` })
+        logs.push({ level: "FIXED", message: `Auto-fixed "${row.resource_name}": ${fixes.join(", ")}` })
         fixed++
       }
     }
@@ -742,8 +824,14 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
 
   const nextOffset = rows.length === batchSize ? offset + batchSize : null
 
-  if (fixed === 0 && failed === 0) {
+  if (fixed === 0 && pendingFixes.length === 0 && failed === 0) {
     logs.push({ level: "INFO", message: `Scanned ${rows.length} resources — all valid` })
+  }
+  if (pendingFixes.length > 0) {
+    logs.push({
+      level: "WARN",
+      message: `${pendingFixes.length} pending fixes staged for repair console`,
+    })
   }
 
   return {
@@ -752,5 +840,112 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
     failed,
     logs,
     nextOffset,
+    pendingFixes,
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  AI Search-and-Fill — uses LLM to suggest plausible values                 */
+/* -------------------------------------------------------------------------- */
+
+const FixSuggestionSchema = z.object({
+  fixes: z.array(
+    z.object({
+      field: z.enum(["address", "phone_number", "website", "hours", "category"]),
+      suggested_value: z.string().nullable(),
+      confidence: z.number().min(0).max(100),
+      reasoning: z.string(),
+    }),
+  ),
+})
+
+async function searchAndSuggestFixes(
+  resourceName: string,
+  missing: { field: ResourceFieldName; original: string | null; reason: string }[],
+  row: { address?: string | null; phone_number?: string | null; website?: string | null; category?: string | null; notes?: string | null },
+): Promise<{ field: ResourceFieldName; original: string | null; suggested: string | null; confidence: number; reason: string }[]> {
+  if (missing.length === 0) return []
+
+  const knownContext = [
+    row.address ? `Address: ${row.address}` : null,
+    row.phone_number ? `Phone: ${row.phone_number}` : null,
+    row.website ? `Website: ${row.website}` : null,
+    row.category ? `Category: ${row.category}` : null,
+    row.notes ? `Notes: ${row.notes}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n")
+
+  const fieldsList = missing.map((m) => `- ${m.field} (${m.reason})`).join("\n")
+
+  try {
+    const { object } = await generateObject({
+      model: "openai/gpt-4o-mini",
+      schema: FixSuggestionSchema,
+      prompt: `You are an audit assistant for a community-services directory in Butte County, California.
+
+Resource Name: "${resourceName}"
+Known Context:
+${knownContext || "(no other fields known)"}
+
+Missing or invalid fields:
+${fieldsList}
+
+For each missing field, propose the most likely correct value based on the resource name and context. Use these rules:
+- For "category", choose ONE from: Food Assistance, Housing, Mental Health, Healthcare, Legal Aid, Employment, Family Services, Senior Services, Veteran Services, Substance Abuse, Disability Services, Utility Assistance, Education, Transportation, Material Goods, Domestic Violence, Immigration Services, General Resources.
+- For "phone_number", format as (XXX) XXX-XXXX. If unsure, return null.
+- For "website", return only well-formed https URLs. If unsure, return null.
+- For "address", prefer Butte County cities (Chico, Oroville, Paradise, Gridley, Magalia). If unsure, return null.
+- For "hours", use a short format like "Mon-Fri 9am-5pm". If unsure, return null.
+
+Confidence: 0-30 = guess, 31-70 = plausible, 71-100 = high confidence based on resource name.
+Return null for suggested_value if you cannot make a confident suggestion — that field will be marked "manual intervention required".`,
+    })
+
+    return missing.map((m) => {
+      const ai = object.fixes.find((f) => f.field === m.field)
+      return {
+        field: m.field,
+        original: m.original,
+        suggested: ai?.suggested_value ?? null,
+        confidence: ai?.confidence ?? 0,
+        reason: m.reason + (ai?.reasoning ? ` — ${ai.reasoning}` : ""),
+      }
+    })
+  } catch (e) {
+    // AI unavailable — return all as manual-intervention
+    return missing.map((m) => ({
+      field: m.field,
+      original: m.original,
+      suggested: null,
+      confidence: 0,
+      reason: `${m.reason} (AI unavailable: ${e instanceof Error ? e.message : "error"})`,
+    }))
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Apply / Approve a single repair fix                                       */
+/* -------------------------------------------------------------------------- */
+
+export async function applyResourceFix(
+  resourceId: string,
+  field: ResourceFieldName,
+  newValue: string | null,
+): Promise<ApplyFixResult> {
+  const supabase = await createClient()
+
+  const sanitized =
+    typeof newValue === "string" ? newValue.replace(/\s+/g, " ").trim() : newValue
+  const valueToWrite = sanitized && sanitized.length > 0 ? sanitized : null
+
+  const { error } = await supabase
+    .from("community_services")
+    .update({ [field]: valueToWrite, updated_at: new Date().toISOString() })
+    .eq("id", resourceId)
+
+  if (error) {
+    return { success: false, message: error.message }
+  }
+  return { success: true, message: `Updated ${field}` }
 }

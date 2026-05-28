@@ -19,6 +19,10 @@ interface LiveLogProps {
   entries: LogEntry[]
   onClear?: () => void
   height?: number
+  /** Called when user clicks the WARN or ERROR filter chip — used to jump to the Repair Console */
+  onJumpToRepairs?: (status: "WARN" | "ERROR") => void
+  /** Number of pending repair items, shown next to a "Jump to Repairs" link */
+  pendingRepairsCount?: number
 }
 
 const STATUS_STYLES: Record<LogStatus, { dot: string; badge: string; chip: string; chipActive: string }> = {
@@ -91,7 +95,7 @@ function formatTimestampShort(ts: number): string {
   })
 }
 
-export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
+export function LiveLog({ entries, onClear, height = 280, onJumpToRepairs, pendingRepairsCount = 0 }: LiveLogProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
   const [filter, setFilter] = useState<FilterType>("ALL")
@@ -125,6 +129,9 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
 
   const handleFilterClick = (key: FilterType) => {
     setFilter((prev) => (prev === key ? "ALL" : key))
+    if ((key === "WARN" || key === "ERROR") && onJumpToRepairs && pendingRepairsCount > 0) {
+      onJumpToRepairs(key)
+    }
   }
 
   return (
@@ -139,6 +146,18 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Activity Log</h3>
             <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
               {filteredEntries.length} of {entries.length} {entries.length === 1 ? "event" : "events"}
+              {pendingRepairsCount > 0 && onJumpToRepairs && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    onClick={() => onJumpToRepairs("WARN")}
+                    className="font-semibold text-rose-600 underline-offset-2 hover:underline dark:text-rose-400"
+                  >
+                    {pendingRepairsCount} need repair →
+                  </button>
+                </>
+              )}
             </p>
           </div>
         </div>
