@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   getCommunityServices,
-  getCommunityServiceCategories,
   type CommunityService,
 } from "@/app/actions/get-community-services"
 import { Button } from "@/components/ui/button"
@@ -14,8 +13,33 @@ import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRi
 const PAGE_SIZE = 25
 const SEARCH_DEBOUNCE_MS = 300
 
+/**
+ * Curated, fixed category grid for the public directory.
+ * Each entry has:
+ *   - label: the short UI label shown on the card (Civic Professional aesthetic)
+ *   - match: the substring used to filter the DB `category` column via ilike
+ *           (so "Food" matches "Food Assistance", "Seniors" matches "Senior Services", etc.)
+ */
+const CATEGORIES: { label: string; match: string }[] = [
+  { label: "Clothing", match: "Cloth" },
+  { label: "Education", match: "Education" },
+  { label: "Emergency", match: "Emergency" },
+  { label: "Employment", match: "Employ" },
+  { label: "Family", match: "Family" },
+  { label: "Food", match: "Food" },
+  { label: "Housing", match: "Housing" },
+  { label: "Legal", match: "Legal" },
+  { label: "Medical", match: "Health" },
+  { label: "Other", match: "General" },
+  { label: "Seniors", match: "Senior" },
+  { label: "Shelter", match: "Shelter" },
+  { label: "Substance", match: "Substance" },
+  { label: "Transportation", match: "Transport" },
+  { label: "Utilities", match: "Utilit" },
+  { label: "Veterans", match: "Veteran" },
+]
+
 export function CommunityServicesDirectory() {
-  const [categories, setCategories] = useState<string[]>([])
   const [services, setServices] = useState<CommunityService[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
