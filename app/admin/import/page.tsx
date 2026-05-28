@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useCallback } from "react"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,11 +21,11 @@ import {
   ClipboardPaste,
   Link2,
 } from "lucide-react"
-import type { AuditLogLine } from "@/app/actions/audit-db"
-import { auditUnifiedBatch, getUnifiedAuditTotal } from "@/app/actions/audit-unified"
-import { type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
+import { auditStagingBatch, getStagingAuditTotal, applyPendingFix, type PendingFix } from "@/app/actions/audit-staging"
+import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
+import { AuditReviewTable } from "@/components/admin/audit-review-table"
 
 type ScrapedListing = {
   source_url: string
@@ -51,18 +51,8 @@ type ScrapedListing = {
 }
 
 const TEMPLATE_HEADERS = [
-  "address",
-  "city",
-  "state",
-  "zip",
-  "apn",
-  "bedrooms",
-  "bathrooms",
-  "square_feet",
-  "rent",
-  "available_date",
-  "management_company",
-  "notes",
+  "address", "city", "state", "zip", "apn", "bedrooms", "bathrooms",
+  "square_feet", "rent", "available_date", "management_company", "notes",
 ]
 
 export default function PropertyDataHubPage() {
@@ -75,12 +65,14 @@ export default function PropertyDataHubPage() {
   const dropRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  /* ---------- AUDIT state ---------- */
+  /* ---------- AUDIT state (staging) ---------- */
   const [auditTotal, setAuditTotal] = useState<number | null>(null)
   const [auditScanned, setAuditScanned] = useState(0)
   const [auditFixed, setAuditFixed] = useState(0)
   const [auditFailed, setAuditFailed] = useState(0)
   const [auditRunning, setAuditRunning] = useState(false)
+  const [pendingFixes, setPendingFixes] = useState<PendingFix[]>([])
+  const [isApproving, setIsApproving] = useState(false)
   const stopAuditRef = useRef(false)
   const stopImportRef = useRef(false)
 
@@ -88,12 +80,12 @@ export default function PropertyDataHubPage() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const logIdRef = useRef(0)
 
-  const appendLog = (source: LogSource, status: LogStatus, message: string) => {
+  const appendLog = useCallback((source: LogSource, status: LogStatus, message: string) => {
     setLogs((prev) => {
       const next = [...prev, { id: ++logIdRef.current, timestamp: Date.now(), source, status, message }]
       return next.length > 1000 ? next.slice(-1000) : next
     })
-  }
+  }, [])
 
   const clearLogs = () => setLogs([])
 
@@ -180,9 +172,7 @@ export default function PropertyDataHubPage() {
     }
   }
 
-  const stopImport = () => {
-    stopImportRef.current = true
-  }
+  const stopImport = () => { stopImportRef.current = true }
 
   const resetImport = () => {
     setFile(null)
@@ -194,16 +184,8 @@ export default function PropertyDataHubPage() {
   }
 
   /* ============================================================
-   *  AUDIT — call auditUnifiedBatch() in a loop until done
+   *  AUDIT — staging mode (no direct writes)
    * ============================================================ */
-
-  const mapAuditLevel = (level: AuditLogLine["level"]): LogStatus => {
-    if (level === "FIXED") return "FIXED"
-    if (level === "SUCCESS") return "SUCCESS"
-    if (level === "ERROR") return "ERROR"
-    if (level === "WARN") return "WARN"
-    return "INFO"
-  }
 
   const runAudit = async () => {
     stopAuditRef.current = false
@@ -211,34 +193,51 @@ export default function PropertyDataHubPage() {
     setAuditScanned(0)
     setAuditFixed(0)
     setAuditFailed(0)
+    setPendingFixes([])
 
     try {
-      const total = await getUnifiedAuditTotal()
+      const total = await getStagingAuditTotal()
       setAuditTotal(total)
-      appendLog(
-        "AUDIT",
-        "INFO",
-        `Starting System Audit of ${total.toLocaleString()} records (batch size 25)`,
-      )
+      appendLog("AUDIT", "INFO", `Starting Staging Audit of ${total.toLocaleString()} records (batch size 25, NO direct writes)`)
+      
       let offset = 0
+      const allFixes: PendingFix[] = []
+      
       while (true) {
         if (stopAuditRef.current) {
           appendLog("AUDIT", "WARN", `Audit stopped by user at row ${offset.toLocaleString()}`)
           break
         }
-        const res = await auditUnifiedBatch(offset, 25)
+        const res = await auditStagingBatch(offset, 25)
         setAuditScanned((p) => p + res.scanned)
-        setAuditFixed((p) => p + res.fixed)
-        setAuditFailed((p) => p + res.failed)
-        for (const line of res.logs) {
-          appendLog("AUDIT", mapAuditLevel(line.level), line.message)
+        
+        // Collect pending fixes
+        if (res.pendingFixes.length > 0) {
+          allFixes.push(...res.pendingFixes)
+          setAuditFixed((p) => p + res.pendingFixes.length)
+          for (const fix of res.pendingFixes) {
+            appendLog("AUDIT", "INFO", `[STAGED] ${fix.address}: ${fix.field} → "${fix.proposedValue}" (${fix.confidence})`)
+          }
         }
+        
+        // Log errors
+        for (const log of res.logs) {
+          if (log.level === "ERROR") {
+            setAuditFailed((p) => p + 1)
+            appendLog("AUDIT", "ERROR", log.message)
+          } else if (log.level === "WARN") {
+            appendLog("AUDIT", "WARN", log.message)
+          }
+        }
+        
         if (res.nextOffset === null) {
-          appendLog("AUDIT", "SUCCESS", `Audit complete — scanned ${total.toLocaleString()} records`)
+          appendLog("AUDIT", "SUCCESS", `Scan complete — ${allFixes.length} pending fixes awaiting review`)
           break
         }
         offset = res.nextOffset
       }
+      
+      setPendingFixes(allFixes)
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error"
       appendLog("AUDIT", "ERROR", `Audit halted: ${msg}`)
@@ -247,15 +246,61 @@ export default function PropertyDataHubPage() {
     }
   }
 
-  const stopAudit = () => {
-    stopAuditRef.current = true
-  }
+  const stopAudit = () => { stopAuditRef.current = true }
 
   const resetAudit = () => {
     setAuditScanned(0)
     setAuditFixed(0)
     setAuditFailed(0)
     setAuditTotal(null)
+    setPendingFixes([])
+  }
+
+  const handleApproveFix = async (fix: PendingFix) => {
+    const result = await applyPendingFix(fix.propertyId, fix.field, fix.proposedValue)
+    if (result.success) {
+      appendLog("AUDIT", "FIXED", `Applied: ${fix.address} → ${fix.field} = "${fix.proposedValue}"`)
+      setPendingFixes((prev) => prev.filter((f) => f.id !== fix.id))
+    } else {
+      appendLog("AUDIT", "ERROR", `Failed to apply fix: ${result.error}`)
+    }
+  }
+
+  const handleApproveWithEdit = async (fix: PendingFix, editedValue: string | number) => {
+    const result = await applyPendingFix(fix.propertyId, fix.field, editedValue)
+    if (result.success) {
+      appendLog("AUDIT", "FIXED", `Applied (edited): ${fix.address} → ${fix.field} = "${editedValue}"`)
+      setPendingFixes((prev) => prev.filter((f) => f.id !== fix.id))
+    } else {
+      appendLog("AUDIT", "ERROR", `Failed to apply fix: ${result.error}`)
+    }
+  }
+
+  const handleDenyFix = (fix: PendingFix) => {
+    appendLog("AUDIT", "WARN", `Denied: ${fix.address} → ${fix.field}`)
+    setPendingFixes((prev) => prev.filter((f) => f.id !== fix.id))
+  }
+
+  const handleApproveAll = async () => {
+    setIsApproving(true)
+    appendLog("AUDIT", "INFO", `Approving all ${pendingFixes.length} pending fixes…`)
+    
+    let approved = 0
+    let failed = 0
+    
+    for (const fix of pendingFixes) {
+      const result = await applyPendingFix(fix.propertyId, fix.field, fix.proposedValue)
+      if (result.success) {
+        approved++
+      } else {
+        failed++
+        appendLog("AUDIT", "ERROR", `Failed: ${fix.address} → ${fix.field}: ${result.error}`)
+      }
+    }
+    
+    appendLog("AUDIT", "SUCCESS", `Approved ${approved} fixes${failed > 0 ? `, ${failed} failed` : ""}`)
+    setPendingFixes([])
+    setIsApproving(false)
   }
 
   const auditPct = auditTotal && auditTotal > 0 ? Math.min(100, Math.round((auditScanned / auditTotal) * 100)) : 0
@@ -399,14 +444,13 @@ export default function PropertyDataHubPage() {
   const auditCard = (
     <AdminCard
       title="Audit"
-      subtitle="Self-healing data scan"
+      subtitle="Staging mode (review before write)"
       icon={ShieldCheck}
-      badge={auditRunning ? "Running" : undefined}
-      badgeVariant="running"
+      badge={auditRunning ? "Scanning" : pendingFixes.length > 0 ? `${pendingFixes.length} Pending` : undefined}
+      badgeVariant={auditRunning ? "running" : "default"}
     >
       <p className="mb-3 text-xs text-slate-500 sm:mb-4">
-        Streams every record through a unified pipeline in batches of 25. Pass A intercepts ordinal typos,
-        Pass B runs web-search lookups, Pass C writes a single unified update per row.
+        Scans records and stages fixes for manual review. No database writes until you click Approve.
       </p>
 
       <div className="mb-3 grid grid-cols-3 gap-1.5 sm:mb-4 sm:gap-2">
@@ -414,9 +458,9 @@ export default function PropertyDataHubPage() {
           <div className="text-base font-semibold text-slate-900 sm:text-lg">{auditScanned.toLocaleString()}</div>
           <div className="text-[9px] uppercase tracking-wide text-slate-500 sm:text-[10px]">Scanned</div>
         </div>
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-1.5 text-center sm:p-2">
-          <div className="text-base font-semibold text-emerald-700 sm:text-lg">{auditFixed.toLocaleString()}</div>
-          <div className="text-[9px] uppercase tracking-wide text-slate-500 sm:text-[10px]">Fixed</div>
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-1.5 text-center sm:p-2">
+          <div className="text-base font-semibold text-amber-700 sm:text-lg">{pendingFixes.length.toLocaleString()}</div>
+          <div className="text-[9px] uppercase tracking-wide text-slate-500 sm:text-[10px]">Pending</div>
         </div>
         <div className="rounded-md border border-rose-200 bg-rose-50 p-1.5 text-center sm:p-2">
           <div className="text-base font-semibold text-rose-700 sm:text-lg">{auditFailed.toLocaleString()}</div>
@@ -427,7 +471,7 @@ export default function PropertyDataHubPage() {
       {auditRunning && (
         <div className="mb-3">
           <Progress value={auditPct} className="h-2" />
-          <p className="mt-1 text-right text-[10px] text-slate-500">{auditPct}% complete</p>
+          <p className="mt-1 text-right text-[10px] text-slate-500">{auditPct}% scanned</p>
         </div>
       )}
 
@@ -435,14 +479,14 @@ export default function PropertyDataHubPage() {
         {!auditRunning ? (
           <Button onClick={runAudit} className="flex-1 gap-1.5 bg-slate-900 hover:bg-slate-800">
             <Play className="h-4 w-4" />
-            Run System Audit
+            Run Staging Audit
           </Button>
         ) : (
           <Button onClick={stopAudit} variant="outline" className="flex-1 gap-1.5 bg-white">
             <Square className="h-4 w-4" /> Stop
           </Button>
         )}
-        {(auditScanned > 0 || auditFailed > 0) && !auditRunning && (
+        {(auditScanned > 0 || pendingFixes.length > 0) && !auditRunning && (
           <Button onClick={resetAudit} variant="ghost" size="icon" className="h-10 w-10">
             <span className="sr-only">Reset</span>
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -456,7 +500,6 @@ export default function PropertyDataHubPage() {
 
   const scrapeCard = (
     <AdminCard title="Scrape & Discovery" subtitle="URL or Easy Paste" icon={Globe}>
-      {/* URL input */}
       <div className="space-y-2">
         <label className="flex items-center gap-1.5 text-xs font-medium text-slate-900">
           <Link2 className="h-3.5 w-3.5" /> Listing URL
@@ -481,7 +524,6 @@ export default function PropertyDataHubPage() {
         </div>
       </div>
 
-      {/* Easy Paste toggle */}
       <button
         onClick={() => setShowPaste((p) => !p)}
         className="mt-3 flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900"
@@ -497,11 +539,11 @@ export default function PropertyDataHubPage() {
             value={pasteHtml}
             onChange={(e) => setPasteHtml(e.target.value)}
             rows={4}
-            className="border-slate-200 bg-white text-xs"
+            className="border-slate-200 bg-white text-sm"
           />
           <Button
             onClick={() => runScrape("paste")}
-            disabled={!pasteHtml || scraping}
+            disabled={!pasteHtml.trim() || scraping}
             variant="outline"
             className="w-full gap-1.5 bg-white"
           >
@@ -532,9 +574,7 @@ export default function PropertyDataHubPage() {
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               {scrapeListing.matched_property_id && (
-                <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-50">
-                  Atlas Match
-                </Badge>
+                <Badge className="bg-slate-900 text-white hover:bg-slate-800">Atlas Match</Badge>
               )}
               <Badge
                 variant="outline"
@@ -573,6 +613,10 @@ export default function PropertyDataHubPage() {
               </div>
             )}
           </div>
+
+          <div className="border-t border-slate-200 pt-2 text-[10px] text-slate-400">
+            Source: {scrapeListing.source_host}
+          </div>
         </div>
       )}
     </AdminCard>
@@ -581,13 +625,29 @@ export default function PropertyDataHubPage() {
   return (
     <AdminHubLayout
       title="Property Data Hub"
-      description="Import, audit, and scrape property records — all in one place."
-      breadcrumbs={[{ label: "Admin", href: "/admin" }, { label: "Property Data Hub" }]}
+      description="Import, audit, and scrape property records with staging review."
+      breadcrumbs={[
+        { label: "Admin", href: "/admin" },
+        { label: "Property Data Hub" },
+      ]}
       importCard={importCard}
       auditCard={auditCard}
       scrapeCard={scrapeCard}
-      logs={logs}
-      onClearLogs={clearLogs}
-    />
+      log={<LiveLog entries={logs} onClear={clearLogs} height={280} />}
+    >
+      {/* Pending Fixes Review Table */}
+      {pendingFixes.length > 0 && (
+        <div className="mt-6">
+          <AuditReviewTable
+            fixes={pendingFixes}
+            onApprove={handleApproveFix}
+            onApproveWithEdit={handleApproveWithEdit}
+            onDeny={handleDenyFix}
+            onApproveAll={handleApproveAll}
+            isApproving={isApproving}
+          />
+        </div>
+      )}
+    </AdminHubLayout>
   )
 }
