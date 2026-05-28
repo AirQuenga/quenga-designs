@@ -40,16 +40,16 @@ export async function refreshAllProperties(): Promise<RefreshResult> {
           // Re-enrich the property
           const enriched = await enrichProperty(prop.apn)
 
-          if (enriched && enriched.latitude && enriched.longitude) {
+          if (enriched && enriched.data.latitude && enriched.data.longitude) {
             const { error: updateError } = await supabase
               .from("properties")
               .update({
-                latitude: enriched.latitude,
-                longitude: enriched.longitude,
-                address: enriched.address || prop.address,
-                city: enriched.city || prop.city,
-                zip_code: enriched.zipCode || prop.zip_code,
-                census_tract: enriched.censusTract,
+                latitude: enriched.data.latitude,
+                longitude: enriched.data.longitude,
+                address: enriched.data.address || prop.address,
+                city: enriched.data.city || prop.city,
+                zip_code: enriched.data.zipCode || prop.zip_code,
+                census_tract: enriched.data.censusTract,
                 updated_at: new Date().toISOString(),
                 enrichment_status: "refreshed",
               })
@@ -96,16 +96,16 @@ export async function refreshSingleProperty(propertyId: string): Promise<{ succe
   try {
     const enriched = await enrichProperty(property.apn)
 
-    if (enriched && enriched.latitude && enriched.longitude) {
+    if (enriched && enriched.data.latitude && enriched.data.longitude) {
       const { error: updateError } = await supabase
         .from("properties")
         .update({
-          latitude: enriched.latitude,
-          longitude: enriched.longitude,
-          address: enriched.address || property.address,
-          city: enriched.city || property.city,
-          zip_code: enriched.zipCode || property.zip_code,
-          census_tract: enriched.censusTract,
+          latitude: enriched.data.latitude,
+          longitude: enriched.data.longitude,
+          address: enriched.data.address || property.address,
+          city: enriched.data.city || property.city,
+          zip_code: enriched.data.zipCode || property.zip_code,
+          census_tract: enriched.data.censusTract,
           updated_at: new Date().toISOString(),
           enrichment_status: "refreshed",
         })

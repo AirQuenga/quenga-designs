@@ -123,7 +123,7 @@ export function ManualEntryForm() {
           .order("property_name")
 
         if (complexData) {
-          const uniqueComplexes = [...new Set(complexData.map((d) => d.property_name).filter(Boolean))]
+          const uniqueComplexes = [...new Set(complexData.map((d: { property_name: string | null }) => d.property_name).filter(Boolean))]
           setExistingComplexes(uniqueComplexes as string[])
         }
 
@@ -135,7 +135,7 @@ export function ManualEntryForm() {
           .order("management_company")
 
         if (managerData) {
-          const uniqueManagers = [...new Set(managerData.map((d) => d.management_company).filter(Boolean))]
+          const uniqueManagers = [...new Set(managerData.map((d: { management_company: string | null }) => d.management_company).filter(Boolean))]
           setExistingManagers(uniqueManagers as string[])
         }
       } catch (error) {
@@ -146,7 +146,7 @@ export function ManualEntryForm() {
     loadExistingData()
   }, [])
 
-  const handleChange = (field: keyof FormData, value: any) => {
+  const handleChange = (field: keyof FormData, value: unknown) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     setSubmitResult(null)
   }

@@ -21,7 +21,7 @@ import {
   ClipboardPaste,
   Link2,
 } from "lucide-react"
-import { auditStagingBatch, getStagingAuditTotal, applyPendingFix, type PendingFix } from "@/app/actions/audit-staging"
+import { auditStagingBatch, getAuditStagingTotal, approveFix, type PendingFix } from "@/app/actions/audit-staging"
 import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
@@ -196,7 +196,7 @@ export default function PropertyDataHubPage() {
     setPendingFixes([])
 
     try {
-      const total = await getStagingAuditTotal()
+      const total = await getAuditStagingTotal()
       setAuditTotal(total)
       appendLog("AUDIT", "INFO", `Starting Staging Audit of ${total.toLocaleString()} records (batch size 25, NO direct writes)`)
       
@@ -257,22 +257,24 @@ export default function PropertyDataHubPage() {
   }
 
   const handleApproveFix = async (fix: PendingFix) => {
-    const result = await applyPendingFix(fix.propertyId, fix.field, fix.proposedValue)
+    const result = await approveFix(fix)
     if (result.success) {
       appendLog("AUDIT", "FIXED", `Applied: ${fix.address} → ${fix.field} = "${fix.proposedValue}"`)
       setPendingFixes((prev) => prev.filter((f) => f.id !== fix.id))
     } else {
-      appendLog("AUDIT", "ERROR", `Failed to apply fix: ${result.error}`)
+      appendLog("AUDIT", "ERROR", `Failed to apply fix: ${result.message}`)
     }
   }
 
   const handleApproveWithEdit = async (fix: PendingFix, editedValue: string | number) => {
-    const result = await applyPendingFix(fix.propertyId, fix.field, editedValue)
+    // Create a modified fix with the edited value
+    const editedFix = { ...fix, proposedValue: editedValue }
+    const result = await approveFix(editedFix)
     if (result.success) {
       appendLog("AUDIT", "FIXED", `Applied (edited): ${fix.address} → ${fix.field} = "${editedValue}"`)
       setPendingFixes((prev) => prev.filter((f) => f.id !== fix.id))
     } else {
-      appendLog("AUDIT", "ERROR", `Failed to apply fix: ${result.error}`)
+      appendLog("AUDIT", "ERROR", `Failed to apply fix: ${result.message}`)
     }
   }
 
@@ -289,12 +291,12 @@ export default function PropertyDataHubPage() {
     let failed = 0
     
     for (const fix of pendingFixes) {
-      const result = await applyPendingFix(fix.propertyId, fix.field, fix.proposedValue)
+      const result = await approveFix(fix)
       if (result.success) {
         approved++
       } else {
         failed++
-        appendLog("AUDIT", "ERROR", `Failed: ${fix.address} → ${fix.field}: ${result.error}`)
+        appendLog("AUDIT", "ERROR", `Failed: ${fix.address} → ${fix.field}: ${result.message}`)
       }
     }
     

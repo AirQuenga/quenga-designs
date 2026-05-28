@@ -212,7 +212,7 @@ export function AuditReviewTable({
       </div>
 
       {/* Edit Modal */}
-      <Dialog open={!!editingFix} onOpenChange={(open) => !open && setEditingFix(null)}>
+      <Dialog open={editingFix !== null} onOpenChange={(open: boolean) => !open && setEditingFix(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Proposed Value</DialogTitle>

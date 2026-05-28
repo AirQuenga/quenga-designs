@@ -566,9 +566,9 @@ export default function ResourceDataHubPage() {
               <tbody className="divide-y divide-slate-100">
                 {discoveredResources.map((resource, i) => (
                   <tr key={i} className="bg-white hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900">{resource.name}</td>
+                    <td className="px-2 py-1.5 text-slate-900">{resource.resource_name}</td>
                     <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.address || "-"}</td>
-                    <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.phone || "-"}</td>
+                    <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.phone_number || "-"}</td>
                     <td className="px-2 py-1.5 text-center">
                       <Badge
                         variant="outline"
@@ -618,8 +618,7 @@ export default function ResourceDataHubPage() {
       importCard={importCard}
       auditCard={auditCard}
       scrapeCard={scrapeCard}
-      logs={logs}
-      onClearLogs={clearLogs}
+      log={<LiveLog entries={logs} onClear={clearLogs} height={280} />}
     />
   )
 }

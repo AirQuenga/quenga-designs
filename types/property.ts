@@ -84,6 +84,10 @@ export interface Property {
   pet_deposit: number | null
   pet_rent: number | null
 
+  // Notes and accessibility
+  notes: string | null
+  is_ada_accessible: boolean
+
   // Enrichment status
   enrichment_status: "complete" | "partial" | "missing_data" | "pending"
 

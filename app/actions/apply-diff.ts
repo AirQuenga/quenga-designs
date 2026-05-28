@@ -79,7 +79,7 @@ function parseDiff(diffText: string): DiffBlock[] {
  * Reads the file, finds the hunk location, applies changes, and writes back.
  */
 export async function applyDiff(diffText: string, branch: string = "main") {
-  const supabase = createClient()
+  const supabase = await createClient()
   const blocks = parseDiff(diffText)
 
   const results: { filePath: string; success: boolean; error?: string }[] = []

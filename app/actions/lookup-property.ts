@@ -206,9 +206,9 @@ export async function lookupAddress(input: ParsedAddress | string): Promise<Look
   // ── 1. Normalise input ────────────────────────────────────────────────────
   let streetNumber = ""
   let route = ""
-  let city = BUTTE_COUNTY_DEFAULTS.city
-  let state = BUTTE_COUNTY_DEFAULTS.state
-  let zip = BUTTE_COUNTY_DEFAULTS.zip
+  let city: string = BUTTE_COUNTY_DEFAULTS.city
+  let state: string = BUTTE_COUNTY_DEFAULTS.state
+  let zip: string = BUTTE_COUNTY_DEFAULTS.zip
   let lat: number | undefined
   let lng: number | undefined
   let rawAddress: string
