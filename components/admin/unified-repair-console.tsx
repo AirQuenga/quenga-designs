@@ -198,7 +198,7 @@ export function UnifiedRepairConsole<F extends string = string>({
   useEffect(() => {
     setRenderCount(PAGE) // reset window when tab changes
   }, [tab])
-  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const sentinelRef = useRef<HTMLLIElement | null>(null)
   useEffect(() => {
     const el = sentinelRef.current
     if (!el) return
