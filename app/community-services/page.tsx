@@ -27,6 +27,7 @@ export default function CommunityServicesPage() {
           <PageHeader
             title="Community Services"
             description="Search Butte County resources by need or browse by category. Every entry is verified and regularly audited."
+            breadcrumbs={[{ href: "/projects", label: "Tools" }, { label: "Community Services" }]}
           />
 
           <div className="mt-10">
