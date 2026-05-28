@@ -28,7 +28,7 @@ import {
   PlusCircle,
   Check,
 } from "lucide-react"
-import { type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
+import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
 import {

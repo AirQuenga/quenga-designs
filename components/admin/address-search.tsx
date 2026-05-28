@@ -65,8 +65,8 @@ function parsePlace(place: google.maps.places.PlaceResult | undefined): ParsedAd
     extractComponent(comps, "administrative_area_level_2")
   const state = extractComponent(comps, "administrative_area_level_1", true)
   const zip = extractComponent(comps, "postal_code")
-  const lat = place.geometry?.location?.lat()
-  const lng = place.geometry?.location?.lng()
+  const lat = place.geometry?.location?.lat?.() ?? undefined
+  const lng = place.geometry?.location?.lng?.() ?? undefined
 
   return {
     street_number,

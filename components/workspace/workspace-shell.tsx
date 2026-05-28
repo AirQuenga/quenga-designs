@@ -271,7 +271,7 @@ export function WorkspaceShell({ meta, initialBranches, initialTree }: Props) {
         </main>
 
         {/* RIGHT — Enhanced AI Copilot with Model Selector */}
-        <CopilotChat activeFilePath={activePath} activeFileContent={activeFile?.content} branch={branch} />
+        <CopilotChat activeFilePath={activePath ?? undefined} activeFileContent={activeFile?.content ?? undefined} branch={branch} />
       </div>
     </div>
   )
