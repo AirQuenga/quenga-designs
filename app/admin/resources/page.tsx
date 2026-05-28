@@ -31,16 +31,38 @@ import {
 import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
-import { ConsolidatedResourceRepair } from "@/components/admin/consolidated-resource-repair"
+import {
+  UnifiedRepairConsole,
+  type RepairItem,
+} from "@/components/admin/unified-repair-console"
 import {
   scrapeResourceDirectory,
   addDiscoveredResources,
   auditResourceBatch,
   getResourceAuditTotal,
+  applyResourceRepair,
+  bulkApplyResourceRepairs,
   type ScrapedResource,
   type ResourceLogLine,
   type PendingResourceRepair,
+  type ResourceFieldName,
 } from "@/app/actions/resource-hub"
+
+const FIELD_LABELS: Record<ResourceFieldName, string> = {
+  address: "Address",
+  phone_number: "Phone",
+  website: "Website",
+  hours: "Hours",
+  category: "Category",
+}
+
+const FIELD_PLACEHOLDERS: Record<ResourceFieldName, string> = {
+  address: "123 Main St, Chico, CA 95926",
+  phone_number: "(530) 555-0123",
+  website: "https://example.org",
+  hours: "Mon–Fri 9am–5pm",
+  category: "Food Assistance",
+}
 
 const CATEGORIES = [
   "Food Assistance",
@@ -90,7 +112,6 @@ export default function ResourceDataHubPage() {
   const [auditFailed, setAuditFailed] = useState(0)
   const [auditRunning, setAuditRunning] = useState(false)
   const [pendingRepairs, setPendingRepairs] = useState<PendingResourceRepair[]>([])
-  const [focusRepairId, setFocusRepairId] = useState<string | null>(null)
   const stopAuditRef = useRef(false)
 
   /* ---------- UNIFIED LOG state ---------- */
@@ -637,31 +658,56 @@ export default function ResourceDataHubPage() {
             const el = document.getElementById("repair-console")
             if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
           }}
-          onEntryClick={(entry) => {
-            // If the log entry references a resource that's pending repair, focus + scroll
-            const match = pendingRepairs.find((r) => entry.message.includes(`"${r.resourceName}"`))
-            if (match) {
-              setFocusRepairId(match.resourceId)
-              const el = document.getElementById(`repair-${match.resourceId}`)
-              if (el) {
-                el.scrollIntoView({ behavior: "smooth", block: "center" })
-              } else {
-                const console = document.getElementById("repair-console")
-                if (console) console.scrollIntoView({ behavior: "smooth", block: "start" })
-              }
-            }
-          }}
         />
       }
     >
       {pendingRepairs.length > 0 && (
         <div id="repair-console" className="mt-6 sm:mt-8">
-          <ConsolidatedResourceRepair
-            repairs={pendingRepairs}
-            focusResourceId={focusRepairId}
-            onSaved={(_id, message) => appendLog("AUDIT", "FIXED", message)}
-            onError={(_id, message) => appendLog("AUDIT", "ERROR", message)}
-            onDismissed={(_id, message) => appendLog("AUDIT", "WARN", message)}
+          <UnifiedRepairConsole<ResourceFieldName>
+            title="Active Repair Console"
+            description={`${pendingRepairs.length} resource${pendingRepairs.length === 1 ? "" : "s"} need attention. Pre-filled values are auto-suggested from search results.`}
+            items={pendingRepairs.map<RepairItem<ResourceFieldName>>((r) => ({
+              id: r.resourceId,
+              title: r.resourceName,
+              subtitle: `${r.category || "Uncategorized"} · ${r.missingFields.length} missing field${r.missingFields.length === 1 ? "" : "s"}`,
+              fields: r.missingFields.map((f) => ({
+                field: f,
+                label: FIELD_LABELS[f],
+                placeholder: FIELD_PLACEHOLDERS[f],
+                reason: r.reasons[f],
+                currentValue: r.currentValues[f],
+                prefilled: r.prefilledValues[f] ?? null,
+              })),
+              searchUrl: r.searchUrl,
+              snippets: r.searchResults,
+              initialStatus: "WARN",
+            }))}
+            onSave={async (id, values) => {
+              const res = await applyResourceRepair(
+                id,
+                values as Partial<Record<ResourceFieldName, string>>,
+              )
+              return res
+            }}
+            onBulkSave={async (payload) => {
+              const res = await bulkApplyResourceRepairs(
+                payload.map((p) => ({
+                  resourceId: p.id,
+                  values: p.values as Partial<Record<ResourceFieldName, string>>,
+                })),
+              )
+              return {
+                succeeded: res.succeeded,
+                failed: res.failed.map((f) => ({ id: f.resourceId, message: f.message })),
+              }
+            }}
+            buildFieldSearchUrl={(item, field) => {
+              const q = `${item.title} ${FIELD_LABELS[field]} Butte County California`
+                .replace(/\s+/g, " ")
+                .trim()
+              return `https://duckduckgo.com/?q=${encodeURIComponent(q)}`
+            }}
+            onLog={(level, message) => appendLog("AUDIT", level, message)}
           />
         </div>
       )}

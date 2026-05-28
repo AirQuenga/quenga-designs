@@ -69,6 +69,11 @@ export interface PendingResourceRepair {
   reasons: Partial<Record<ResourceFieldName, string>>
   searchUrl: string
   searchResults: SearchSnippet[]
+  /** Pre-filled values discovered from raw web-search snippets (no AI). */
+  prefilledValues: Partial<Record<ResourceFieldName, string>>
+  /** True when every missing field was pre-filled AND passes format validation —
+   * the consumer can immediately auto-promote this row to "Fixed" with no UI work. */
+  autoValidated: boolean
 }
 
 export interface ApplyFixResult {
@@ -804,6 +809,39 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
       const searchUrl = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`
       const searchResults = await searchWeb(query).catch(() => [])
 
+      // Pre-fill from raw snippet text (no AI tokens)
+      const prefilledValues = prefillFromSnippets(searchResults, missingFields, row.resource_name)
+
+      // If every missing field is pre-filled AND each pre-filled value passes
+      // format validation, apply the write immediately and skip the manual queue.
+      const allFieldsCovered = missingFields.every((f) => {
+        const v = prefilledValues[f]
+        return typeof v === "string" && v.trim().length > 0 && validateField(f, v)
+      })
+
+      if (allFieldsCovered) {
+        const autoUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() }
+        for (const f of missingFields) autoUpdate[f] = prefilledValues[f]
+        const { error: autoErr } = await supabase
+          .from("community_services")
+          .update(autoUpdate)
+          .eq("id", row.id)
+        if (autoErr) {
+          logs.push({
+            level: "ERROR",
+            message: `Auto-validate failed for "${row.resource_name}": ${autoErr.message}`,
+          })
+          failed++
+        } else {
+          logs.push({
+            level: "FIXED",
+            message: `Auto-validated "${row.resource_name}": ${missingFields.join(", ")}`,
+          })
+          fixed++
+        }
+        continue
+      }
+
       pendingRepairs.push({
         resourceId: row.id,
         resourceName: row.resource_name,
@@ -819,6 +857,8 @@ export async function auditResourceBatch(offset = 0, batchSize = 25): Promise<Au
         reasons,
         searchUrl,
         searchResults,
+        prefilledValues,
+        autoValidated: false,
       })
 
       logs.push({
@@ -925,5 +965,123 @@ export async function applyResourceRepair(
   return {
     success: true,
     message: `Updated ${Object.keys(sanitized).join(", ")}`,
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Bulk apply — used by "Bulk Approve" in the Unified Repair Console         */
+/* -------------------------------------------------------------------------- */
+
+export interface BulkRepairItem {
+  resourceId: string
+  values: Partial<Record<ResourceFieldName, string | null>>
+}
+
+export interface BulkRepairResult {
+  succeeded: string[]
+  failed: { resourceId: string; message: string }[]
+}
+
+export async function bulkApplyResourceRepairs(items: BulkRepairItem[]): Promise<BulkRepairResult> {
+  const succeeded: string[] = []
+  const failed: BulkRepairResult["failed"] = []
+  for (const item of items) {
+    const result = await applyResourceRepair(item.resourceId, item.values)
+    if (result.success) succeeded.push(item.resourceId)
+    else failed.push({ resourceId: item.resourceId, message: result.message })
+  }
+  return { succeeded, failed }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Snippet pre-fill + format validation (zero AI tokens)                     */
+/* -------------------------------------------------------------------------- */
+
+function prefillFromSnippets(
+  results: SearchSnippet[],
+  missingFields: ResourceFieldName[],
+  resourceName: string,
+): Partial<Record<ResourceFieldName, string>> {
+  const prefilled: Partial<Record<ResourceFieldName, string>> = {}
+  if (results.length === 0) return prefilled
+
+  const lowerName = resourceName.toLowerCase()
+  // Score-aware: the first snippet that mentions the resource name wins;
+  // otherwise we fall back to the first snippet that produces a candidate.
+  const ranked = [...results].sort((a, b) => {
+    const aHit = a.title.toLowerCase().includes(lowerName) || a.snippet.toLowerCase().includes(lowerName) ? 1 : 0
+    const bHit = b.title.toLowerCase().includes(lowerName) || b.snippet.toLowerCase().includes(lowerName) ? 1 : 0
+    return bHit - aHit
+  })
+
+  const corpus = ranked.map((r) => `${r.title}\n${r.snippet}\n${r.url}`).join("\n")
+
+  if (missingFields.includes("phone_number")) {
+    const phones = extractPhoneNumbers(corpus)
+    if (phones.length > 0) {
+      const digits = phones[0].length === 11 && phones[0].startsWith("1") ? phones[0].slice(1) : phones[0]
+      if (digits.length === 10) {
+        prefilled.phone_number = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`
+      }
+    }
+  }
+
+  if (missingFields.includes("website")) {
+    for (const r of ranked) {
+      const candidate = r.url
+      if (
+        candidate.startsWith("https://") &&
+        !candidate.includes("duckduckgo.com") &&
+        !candidate.includes("google.com/search") &&
+        !candidate.includes("bing.com/search")
+      ) {
+        prefilled.website = candidate
+        break
+      }
+    }
+  }
+
+  if (missingFields.includes("address")) {
+    const addresses = extractAddresses(corpus)
+    if (addresses.length > 0) prefilled.address = addresses[0]
+  }
+
+  return prefilled
+}
+
+/**
+ * Server-callable validator. Used by the Unified Repair Console's
+ * "Auto-Validate" button to decide whether a row can skip manual review.
+ */
+export async function validateRepairValues(
+  values: Partial<Record<ResourceFieldName, string | null>>,
+): Promise<{ valid: boolean; failures: ResourceFieldName[] }> {
+  const failures: ResourceFieldName[] = []
+  for (const [key, raw] of Object.entries(values) as [ResourceFieldName, string | null][]) {
+    if (typeof raw !== "string" || raw.trim().length === 0) continue
+    if (!validateField(key, raw)) failures.push(key)
+  }
+  return { valid: failures.length === 0, failures }
+}
+
+function validateField(field: ResourceFieldName, value: string): boolean {
+  const v = value.trim()
+  if (v.length === 0) return false
+  switch (field) {
+    case "phone_number": {
+      const digits = v.replace(/[^\d]/g, "")
+      return digits.length === 10 || (digits.length === 11 && digits.startsWith("1"))
+    }
+    case "website":
+      return /^https?:\/\/.+\..+/.test(v)
+    case "address":
+      // Must contain a street number AND letters AND > 8 chars
+      return /\d+/.test(v) && /[A-Za-z]/.test(v) && v.length >= 8
+    case "hours":
+      return v.length >= 3
+    case "category":
+      return v.length >= 3
+    default:
+      return true
   }
 }
