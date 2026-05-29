@@ -28,17 +28,41 @@ import {
   PlusCircle,
   Check,
 } from "lucide-react"
-import { type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
+import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
+import {
+  UnifiedRepairConsole,
+  type RepairItem,
+} from "@/components/admin/unified-repair-console"
 import {
   scrapeResourceDirectory,
   addDiscoveredResources,
   auditResourceBatch,
   getResourceAuditTotal,
+  applyResourceRepair,
+  bulkApplyResourceRepairs,
   type ScrapedResource,
   type ResourceLogLine,
+  type PendingResourceRepair,
+  type ResourceFieldName,
 } from "@/app/actions/resource-hub"
+
+const FIELD_LABELS: Record<ResourceFieldName, string> = {
+  address: "Address",
+  phone_number: "Phone",
+  website: "Website",
+  hours: "Hours",
+  category: "Category",
+}
+
+const FIELD_PLACEHOLDERS: Record<ResourceFieldName, string> = {
+  address: "123 Main St, Chico, CA 95926",
+  phone_number: "(530) 555-0123",
+  website: "https://example.org",
+  hours: "Mon–Fri 9am–5pm",
+  category: "Food Assistance",
+}
 
 const CATEGORIES = [
   "Food Assistance",
@@ -87,6 +111,7 @@ export default function ResourceDataHubPage() {
   const [auditFixed, setAuditFixed] = useState(0)
   const [auditFailed, setAuditFailed] = useState(0)
   const [auditRunning, setAuditRunning] = useState(false)
+  const [pendingRepairs, setPendingRepairs] = useState<PendingResourceRepair[]>([])
   const stopAuditRef = useRef(false)
 
   /* ---------- UNIFIED LOG state ---------- */
@@ -215,11 +240,12 @@ export default function ResourceDataHubPage() {
     setAuditScanned(0)
     setAuditFixed(0)
     setAuditFailed(0)
+    setPendingRepairs([])
 
     try {
       const total = await getResourceAuditTotal()
       setAuditTotal(total)
-      appendLog("AUDIT", "INFO", `Starting Resource Audit of ${total.toLocaleString()} records (batch size 25)`)
+      appendLog("AUDIT", "INFO", `Starting Smart Audit of ${total.toLocaleString()} records (batch size 25)`)
 
       let offset = 0
       while (true) {
@@ -232,6 +258,10 @@ export default function ResourceDataHubPage() {
         setAuditScanned((p) => p + res.scanned)
         setAuditFixed((p) => p + res.fixed)
         setAuditFailed((p) => p + res.failed)
+
+        if (res.pendingRepairs && res.pendingRepairs.length > 0) {
+          setPendingRepairs((prev) => [...prev, ...res.pendingRepairs!])
+        }
 
         for (const line of res.logs) {
           appendLog("AUDIT", mapLevel(line.level), line.message)
@@ -566,9 +596,9 @@ export default function ResourceDataHubPage() {
               <tbody className="divide-y divide-slate-100">
                 {discoveredResources.map((resource, i) => (
                   <tr key={i} className="bg-white hover:bg-slate-50">
-                    <td className="px-2 py-1.5 text-slate-900">{resource.name}</td>
+                    <td className="px-2 py-1.5 text-slate-900">{resource.resource_name}</td>
                     <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.address || "-"}</td>
-                    <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.phone || "-"}</td>
+                    <td className="px-2 py-1.5 text-slate-500 hidden sm:table-cell">{resource.phone_number || "-"}</td>
                     <td className="px-2 py-1.5 text-center">
                       <Badge
                         variant="outline"
@@ -618,8 +648,69 @@ export default function ResourceDataHubPage() {
       importCard={importCard}
       auditCard={auditCard}
       scrapeCard={scrapeCard}
-      logs={logs}
-      onClearLogs={clearLogs}
-    />
+      log={
+        <LiveLog
+          entries={logs}
+          onClear={clearLogs}
+          height={280}
+          pendingRepairsCount={pendingRepairs.length}
+          onJumpToRepairs={() => {
+            const el = document.getElementById("repair-console")
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+          }}
+        />
+      }
+    >
+      {pendingRepairs.length > 0 && (
+        <div id="repair-console" className="mt-6 sm:mt-8">
+          <UnifiedRepairConsole<ResourceFieldName>
+            title="Active Repair Console"
+            description={`${pendingRepairs.length} resource${pendingRepairs.length === 1 ? "" : "s"} need attention. Pre-filled values are auto-suggested from search results.`}
+            items={pendingRepairs.map<RepairItem<ResourceFieldName>>((r) => ({
+              id: r.resourceId,
+              title: r.resourceName,
+              subtitle: `${r.category || "Uncategorized"} · ${r.missingFields.length} missing field${r.missingFields.length === 1 ? "" : "s"}`,
+              fields: r.missingFields.map((f) => ({
+                field: f,
+                label: FIELD_LABELS[f],
+                placeholder: FIELD_PLACEHOLDERS[f],
+                reason: r.reasons[f],
+                currentValue: r.currentValues[f],
+                prefilled: r.prefilledValues[f] ?? null,
+              })),
+              searchUrl: r.searchUrl,
+              snippets: r.searchResults,
+              initialStatus: "WARN",
+            }))}
+            onSave={async (id, values) => {
+              const res = await applyResourceRepair(
+                id,
+                values as Partial<Record<ResourceFieldName, string>>,
+              )
+              return res
+            }}
+            onBulkSave={async (payload) => {
+              const res = await bulkApplyResourceRepairs(
+                payload.map((p) => ({
+                  resourceId: p.id,
+                  values: p.values as Partial<Record<ResourceFieldName, string>>,
+                })),
+              )
+              return {
+                succeeded: res.succeeded,
+                failed: res.failed.map((f) => ({ id: f.resourceId, message: f.message })),
+              }
+            }}
+            buildFieldSearchUrl={(item, field) => {
+              const q = `${item.title} ${FIELD_LABELS[field]} Butte County California`
+                .replace(/\s+/g, " ")
+                .trim()
+              return `https://duckduckgo.com/?q=${encodeURIComponent(q)}`
+            }}
+            onLog={(level, message) => appendLog("AUDIT", level, message)}
+          />
+        </div>
+      )}
+    </AdminHubLayout>
   )
 }

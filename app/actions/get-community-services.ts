@@ -43,7 +43,9 @@ export async function getCommunityServices(
   let query = supabase.from("community_services").select("*", { count: "exact" })
 
   if (filters?.category) {
-    query = query.eq("category", filters.category)
+    // Forgiving substring match so short UI labels (e.g. "Food") match
+    // longer DB categories (e.g. "Food Assistance").
+    query = query.ilike("category", `%${filters.category}%`)
   }
 
   if (filters?.searchTerm) {

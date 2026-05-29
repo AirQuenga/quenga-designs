@@ -1,4 +1,5 @@
 import type { Property } from "@/types/property"
+import type { UtilityConfiguration } from "@/lib/fmr"
 import { calculateFMR, getDefaultUtilityConfig } from "@/lib/fmr"
 
 export type ExportFormat = "csv" | "xlsx" | "json"
@@ -66,7 +67,8 @@ export function exportToCSV(properties: Property[], options: ExportOptions = { f
     ]
 
     if (options.includeFMR) {
-      const fmr = calculateFMR(p.bedrooms || 1, p.utilities || getDefaultUtilityConfig())
+      const utilities = p.utilities ? p.utilities : getDefaultUtilityConfig()
+      const fmr = calculateFMR(p.bedrooms || 1, utilities as UtilityConfiguration)
       row.push(
         String(fmr.baseFMR),
         String(fmr.utilityAllowance),
@@ -112,7 +114,8 @@ export function exportToJSON(properties: Property[], options: ExportOptions = { 
     }
 
     if (options.includeFMR) {
-      const fmr = calculateFMR(p.bedrooms || 1, p.utilities || getDefaultUtilityConfig())
+      const utilities = p.utilities ? p.utilities : getDefaultUtilityConfig()
+      const fmr = calculateFMR(p.bedrooms || 1, utilities as UtilityConfiguration)
       base.fmr = {
         base: fmr.baseFMR,
         utility_allowance: fmr.utilityAllowance,

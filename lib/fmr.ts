@@ -196,13 +196,13 @@ function safeGetAllowance(
   if (!table) return 0
 
   // If table is a direct UtilityAllowanceTable (like WATER_SEWER_ALLOWANCES)
-  if (typeof table[bedrooms] === "number") {
-    return (table as UtilityAllowanceTable)[bedrooms] ?? 0
+  if (typeof (table as Record<number, unknown>)[bedrooms] === "number") {
+    return ((table as unknown) as UtilityAllowanceTable)[bedrooms] ?? 0
   }
 
   // If table is keyed by utility type (like HEATING_ALLOWANCES)
   if (!key) return 0
-  const typeTable = (table as Record<string, UtilityAllowanceTable>)[key]
+  const typeTable = ((table as unknown) as Record<string, UtilityAllowanceTable>)[key]
   if (!typeTable) {
     console.warn(`[FMR] Unknown utility type: ${key}, returning 0 allowance`)
     return 0

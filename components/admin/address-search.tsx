@@ -52,7 +52,8 @@ function extractComponent(
   return comp ? (useShort ? comp.short_name : comp.long_name) : ""
 }
 
-function parsePlace(place: ReturnType<ReturnType<typeof window.google.maps.places.Autocomplete.prototype.getPlace>["valueOf"]>): ParsedAddress | null {
+// @ts-expect-error - google namespace is loaded dynamically via script
+function parsePlace(place: google.maps.places.PlaceResult | undefined): ParsedAddress | null {
   if (!place?.address_components) return null
 
   const comps = place.address_components
@@ -64,8 +65,8 @@ function parsePlace(place: ReturnType<ReturnType<typeof window.google.maps.place
     extractComponent(comps, "administrative_area_level_2")
   const state = extractComponent(comps, "administrative_area_level_1", true)
   const zip = extractComponent(comps, "postal_code")
-  const lat = place.geometry?.location.lat()
-  const lng = place.geometry?.location.lng()
+  const lat = place.geometry?.location?.lat?.() ?? undefined
+  const lng = place.geometry?.location?.lng?.() ?? undefined
 
   return {
     street_number,
@@ -124,7 +125,7 @@ export function AddressSearch({
   placeholder = "Start typing an address in Chico, CA…",
 }: AddressSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const autocompleteRef = useRef<ReturnType<typeof window.google.maps.places.Autocomplete.prototype.valueOf> | null>(null)
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
   const selectedRef = useRef<ParsedAddress | null>(null)
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY

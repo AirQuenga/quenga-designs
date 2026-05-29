@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   getCommunityServices,
-  getCommunityServiceCategories,
   type CommunityService,
 } from "@/app/actions/get-community-services"
 import { Button } from "@/components/ui/button"
@@ -14,8 +13,33 @@ import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRi
 const PAGE_SIZE = 25
 const SEARCH_DEBOUNCE_MS = 300
 
+/**
+ * Curated, fixed category grid for the public directory.
+ * Each entry has:
+ *   - label: the short UI label shown on the card (Civic Professional aesthetic)
+ *   - match: the substring used to filter the DB `category` column via ilike
+ *           (so "Food" matches "Food Assistance", "Seniors" matches "Senior Services", etc.)
+ */
+const CATEGORIES: { label: string; match: string }[] = [
+  { label: "Clothing", match: "Cloth" },
+  { label: "Education", match: "Education" },
+  { label: "Emergency", match: "Emergency" },
+  { label: "Employment", match: "Employ" },
+  { label: "Family", match: "Family" },
+  { label: "Food", match: "Food" },
+  { label: "Housing", match: "Housing" },
+  { label: "Legal", match: "Legal" },
+  { label: "Medical", match: "Health" },
+  { label: "Other", match: "General" },
+  { label: "Seniors", match: "Senior" },
+  { label: "Shelter", match: "Shelter" },
+  { label: "Substance", match: "Substance" },
+  { label: "Transportation", match: "Transport" },
+  { label: "Utilities", match: "Utilit" },
+  { label: "Veterans", match: "Veteran" },
+]
+
 export function CommunityServicesDirectory() {
-  const [categories, setCategories] = useState<string[]>([])
   const [services, setServices] = useState<CommunityService[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
@@ -30,11 +54,6 @@ export function CommunityServicesDirectory() {
   // A "browsing" state means the user has selected a category or typed a search.
   // Until then, show the FindHelp-style landing (search hero + category grid only).
   const isBrowsing = Boolean(activeCategory || searchQuery)
-
-  // Load categories once
-  useEffect(() => {
-    getCommunityServiceCategories().then(setCategories)
-  }, [])
 
   // Debounce typed input
   useEffect(() => {
@@ -83,7 +102,11 @@ export function CommunityServicesDirectory() {
 
   const activeFilterLabel = useMemo(() => {
     const parts: string[] = []
-    if (activeCategory) parts.push(activeCategory)
+    if (activeCategory) {
+      // Find the display label for this match string
+      const catObj = CATEGORIES.find((c) => c.match === activeCategory)
+      parts.push(catObj?.label ?? activeCategory)
+    }
     if (searchQuery) parts.push(`"${searchQuery}"`)
     return parts.join(" · ")
   }, [activeCategory, searchQuery])
@@ -127,39 +150,28 @@ export function CommunityServicesDirectory() {
           <div className="mb-4 flex items-baseline justify-between">
             <h3 className="text-lg font-semibold text-foreground sm:text-xl">Browse by category</h3>
             <span className="text-xs text-muted-foreground">
-              {categories.length} {categories.length === 1 ? "category" : "categories"}
+              {CATEGORIES.length} {CATEGORIES.length === 1 ? "category" : "categories"}
             </span>
           </div>
 
-          {categories.length === 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-20 animate-pulse rounded-xl border border-border bg-card shadow-sm"
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => {
-                    setActiveCategory(cat)
-                    setPage(1)
-                  }}
-                  className="group flex items-center justify-between rounded-xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-                >
-                  <span className="text-base font-medium text-foreground group-hover:text-primary">
-                    {cat}
-                  </span>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.label}
+                type="button"
+                onClick={() => {
+                  setActiveCategory(cat.match)
+                  setPage(1)
+                }}
+                className="group flex items-center justify-between rounded-xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+              >
+                <span className="text-base font-medium text-foreground group-hover:text-primary">
+                  {cat.label}
+                </span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+              </button>
+            ))}
+          </div>
         </section>
       )}
 

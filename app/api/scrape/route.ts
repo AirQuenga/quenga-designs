@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server"
 import * as cheerio from "cheerio"
+import { streamObject } from "ai"
+import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
+
+/* ============================================================
+ *  BROWSER HEADERS & RETRY CONFIG
+ * ============================================================ */
 
 const BROWSER_HEADERS: HeadersInit = {
   "User-Agent":
@@ -18,6 +24,34 @@ const BROWSER_HEADERS: HeadersInit = {
   "Upgrade-Insecure-Requests": "1",
   Referer: "https://www.google.com/",
 }
+
+const MAX_RETRIES = 2
+const RETRY_DELAY_MS = 1000
+
+async function fetchWithRetry(url: string, attempt = 1): Promise<Response> {
+  try {
+    const res = await fetch(url, {
+      headers: BROWSER_HEADERS,
+      signal: AbortSignal.timeout(15000),
+      redirect: "follow",
+    })
+    if (!res.ok && attempt < MAX_RETRIES) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt))
+      return fetchWithRetry(url, attempt + 1)
+    }
+    return res
+  } catch (e) {
+    if (attempt < MAX_RETRIES) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt))
+      return fetchWithRetry(url, attempt + 1)
+    }
+    throw e
+  }
+}
+
+/* ============================================================
+ *  TYPES
+ * ============================================================ */
 
 export interface ScrapedListing {
   source_url: string
@@ -40,34 +74,29 @@ export interface ScrapedListing {
   matched_property_id: string | null
   matched_property_address: string | null
   confidence: number
+  extraction_method: "regex" | "ai" | "hybrid"
 }
 
 /* ============================================================
- *  PARSING HELPERS
+ *  REGEX PARSING HELPERS
  * ============================================================ */
 
 function parsePrice(text: string): number | null {
   if (!text) return null
-  // Remove common noise
   const cleaned = text.replace(/deposit|fee|application/gi, "")
-  // Matches "$1,250", "$1250", "1,250 / mo", "$1,500/month" etc.
   const matches = cleaned.match(/\$?\s?(\d{1,3}(?:,\d{3})*|\d{3,5})(?:\s?(?:\/\s?(?:mo|month|per\s*month))?)?/gi)
   if (!matches) return null
   const numbers = matches
     .map((m) => Number(m.replace(/[^\d]/g, "")))
-    .filter((n) => n >= 400 && n <= 15000) // Reasonable rent range
-  if (numbers.length === 0) return null
-  // Usually the first reasonable number is the rent
-  return numbers[0]
+    .filter((n) => n >= 400 && n <= 15000)
+  return numbers[0] ?? null
 }
 
 function parseBedrooms(text: string): number | null {
   if (!text) return null
   if (/\bstudio\b/i.test(text)) return 0
-  // Match "3 bed", "3 BR", "3 bedroom", "3-bedroom", "3bd"
   const m = text.match(/(\d+(?:\.\d)?)\s*[-]?\s*(?:br|bed|bedroom|bd)\b/i)
   if (m) return Math.round(Number(m[1]))
-  // Try "3/2" format (beds/baths)
   const slashMatch = text.match(/\b(\d)\s*\/\s*\d/)
   if (slashMatch) return Number(slashMatch[1])
   return null
@@ -75,10 +104,8 @@ function parseBedrooms(text: string): number | null {
 
 function parseBathrooms(text: string): number | null {
   if (!text) return null
-  // Match "2 bath", "2 BA", "2 bathroom", "1.5 bath", "2ba"
   const m = text.match(/(\d+(?:\.\d)?)\s*[-]?\s*(?:ba|bath|bathroom)\b/i)
   if (m) return Number(m[1])
-  // Try "3/2" format (beds/baths)
   const slashMatch = text.match(/\b\d\s*\/\s*(\d(?:\.\d)?)/)
   if (slashMatch) return Number(slashMatch[1])
   return null
@@ -86,28 +113,22 @@ function parseBathrooms(text: string): number | null {
 
 function parseSquareFeet(text: string): number | null {
   if (!text) return null
-  // Match "1,200 sq ft", "1200 sqft", "1200 square feet", "1,200SF"
   const m = text.match(/(\d{1,3}(?:,\d{3})?|\d{3,5})\s*(?:sq\.?\s*ft|sqft|square\s*feet|sf)\b/i)
   if (!m) return null
   const num = Number(m[1].replace(/,/g, ""))
-  // Sanity check: reasonable square footage range
   return num >= 200 && num <= 10000 ? num : null
 }
 
 function parseDate(text: string): string | null {
   if (!text) return null
-  // "Now", "Immediately", "ASAP"
   if (/\b(now|immediate|asap|today)\b/i.test(text)) {
     return new Date().toISOString().slice(0, 10)
   }
-  // ISO date: 2026-05-20
   const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/)
   if (iso) return iso[1]
-  // "December 1, 2026" / "Dec 1 2026" / "12/01/2026" / "12-01-2026"
   const patterns = [
     /(?:available[:\s]*)?(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})/i,
     /(?:available[:\s]*)?((?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{4})/i,
-    /(?:available[:\s]*)?(\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s*\d{4})/i,
   ]
   for (const re of patterns) {
     const m = text.match(re)
@@ -132,15 +153,13 @@ interface ParsedAddress {
 
 function parseAddress(text: string): ParsedAddress | null {
   if (!text) return null
-  // Clean up the text
   const cleaned = text.replace(/\s+/g, " ").trim()
-  
-  // Try to match full address pattern: "123 Main St, Chico, CA 95928"
+
   const fullRe = new RegExp(
     `(\\d{1,6}\\s+[A-Z][A-Za-z0-9'\\-\\.\\s]{2,40}\\s+(?:${STREET_SUFFIXES})\\.?)` +
-    `(?:[,\\s]+([A-Za-z\\s]{2,30}))` +
-    `(?:[,\\s]+([A-Z]{2}))` +
-    `(?:[,\\s]+(\\d{5}(?:-\\d{4})?))?`,
+      `(?:[,\\s]+([A-Za-z\\s]{2,30}))` +
+      `(?:[,\\s]+([A-Z]{2}))` +
+      `(?:[,\\s]+(\\d{5}(?:-\\d{4})?))?`,
     "i"
   )
   const fullMatch = cleaned.match(fullRe)
@@ -154,17 +173,15 @@ function parseAddress(text: string): ParsedAddress | null {
     }
   }
 
-  // Try simpler street-only pattern
   const streetRe = new RegExp(
     `\\b(\\d{1,6}\\s+[A-Z][A-Za-z0-9'\\-\\.\\s]{2,40}\\s+(?:${STREET_SUFFIXES})\\.?)\\b`,
     "i"
   )
   const streetMatch = cleaned.match(streetRe)
   if (streetMatch) {
-    // Try to find city/state/zip after the street
     const afterStreet = cleaned.slice(cleaned.indexOf(streetMatch[0]) + streetMatch[0].length)
     const cityStateZip = afterStreet.match(/[,\s]+([A-Za-z\s]{2,30})[,\s]+([A-Z]{2})[,\s]*(\d{5})?/i)
-    
+
     return {
       full: streetMatch[0] + (cityStateZip ? cityStateZip[0] : ""),
       street: streetMatch[1]?.trim() || null,
@@ -195,7 +212,7 @@ function parseAmenities(text: string): string[] {
   if (!text) return []
   const lower = text.toLowerCase()
   const amenities: string[] = []
-  
+
   const amenityPatterns: [RegExp, string][] = [
     [/\b(washer\s*[\/&]?\s*dryer|w\/d|laundry)\b/i, "Washer/Dryer"],
     [/\b(in[\s-]?unit\s+laundry)\b/i, "In-Unit Laundry"],
@@ -216,11 +233,11 @@ function parseAmenities(text: string): string[] {
     [/\b(utilities?\s*included|all\s*bills?\s*paid)\b/i, "Utilities Included"],
     [/\b(ev\s*charging|electric\s*vehicle)\b/i, "EV Charging"],
   ]
-  
+
   for (const [pattern, name] of amenityPatterns) {
     if (pattern.test(lower)) amenities.push(name)
   }
-  
+
   return [...new Set(amenities)]
 }
 
@@ -235,8 +252,7 @@ function parsePetsAllowed(text: string): boolean | null {
 function extractImages($: cheerio.CheerioAPI, url: string): string[] {
   const images: string[] = []
   const seen = new Set<string>()
-  
-  // Common image selectors for rental sites
+
   const selectors = [
     'img[src*="photo"]',
     'img[src*="image"]',
@@ -246,39 +262,36 @@ function extractImages($: cheerio.CheerioAPI, url: string): string[] {
     '[class*="carousel"] img',
     'meta[property="og:image"]',
   ]
-  
+
   for (const sel of selectors) {
     $(sel).each((_, el) => {
       let src = $(el).attr("src") || $(el).attr("data-src") || $(el).attr("content")
       if (!src) return
-      
-      // Make absolute URL
+
       try {
         src = new URL(src, url).href
       } catch {
         return
       }
-      
-      // Skip tiny images (icons, logos)
+
       const width = parseInt($(el).attr("width") || "0", 10)
       const height = parseInt($(el).attr("height") || "0", 10)
       if ((width > 0 && width < 100) || (height > 0 && height < 100)) return
-      
-      // Skip common non-photo patterns
+
       if (/logo|icon|avatar|badge|sprite/i.test(src)) return
-      
+
       if (!seen.has(src)) {
         seen.add(src)
         images.push(src)
       }
     })
   }
-  
-  return images.slice(0, 10) // Limit to 10 images
+
+  return images.slice(0, 10)
 }
 
 /* ============================================================
- *  SITE-SPECIFIC PARSERS
+ *  SITE-SPECIFIC PARSERS (Enhanced)
  * ============================================================ */
 
 interface SiteParser {
@@ -287,17 +300,20 @@ interface SiteParser {
 }
 
 const siteParsers: SiteParser[] = [
-  // Zillow
+  // Zillow (enhanced with multiple data sources)
   {
     match: (host) => /zillow\.com/i.test(host),
     parse: ($, url) => {
       const data: Partial<ScrapedListing> = {}
-      // Zillow puts data in __NEXT_DATA__ script
+      // Try __NEXT_DATA__ first
       const nextData = $('script#__NEXT_DATA__').text()
       if (nextData) {
         try {
           const json = JSON.parse(nextData)
-          const property = json?.props?.pageProps?.property || json?.props?.pageProps?.gdpClientCache
+          const property =
+            json?.props?.pageProps?.property ||
+            json?.props?.pageProps?.gdpClientCache ||
+            json?.props?.pageProps?.initialReduxState?.gdp?.building
           if (property) {
             data.price = property.price || property.rentZestimate
             data.bedrooms = property.bedrooms
@@ -307,39 +323,50 @@ const siteParsers: SiteParser[] = [
             data.city = property.city
             data.state = property.state
             data.zip_code = property.zipcode
+            data.property_type = property.homeType?.toLowerCase()
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
+      }
+      // Fallback to meta/DOM
+      if (!data.address) {
+        data.address = $('h1[class*="address"]').text().trim() || $('[data-testid="bdp-summary-address"]').text().trim()
       }
       return data
     },
   },
-  // Apartments.com
+  // Apartments.com (enhanced)
   {
     match: (host) => /apartments\.com/i.test(host),
     parse: ($) => {
       const data: Partial<ScrapedListing> = {}
-      data.title = $('h1[class*="propertyName"]').text().trim() || null
-      data.address = $('[class*="propertyAddress"]').text().trim() || null
-      const priceText = $('[class*="pricingColumn"], [class*="rentLabel"]').first().text()
+      data.title = $('h1[class*="propertyName"]').text().trim() || $('h1').first().text().trim()
+      data.address = $('[class*="propertyAddress"]').text().trim() || $('[data-testid="address"]').text().trim()
+      const priceText = $('[class*="pricingColumn"], [class*="rentLabel"], [class*="price"]').first().text()
       data.price = parsePrice(priceText)
+      // Bed/bath from header
+      const headerText = $('[class*="bedBathInfo"], [class*="unitDetails"]').text()
+      data.bedrooms = parseBedrooms(headerText)
+      data.bathrooms = parseBathrooms(headerText)
       return data
     },
   },
-  // Craigslist
+  // Craigslist (enhanced)
   {
     match: (host) => /craigslist\.(org|com)/i.test(host),
     parse: ($) => {
       const data: Partial<ScrapedListing> = {}
-      data.title = $('#titletextonly').text().trim() || null
+      data.title = $('#titletextonly').text().trim()
       data.price = parsePrice($('.price').first().text())
-      // Craigslist puts bed/bath in housing attribute
       const housing = $('.housing').text()
       data.bedrooms = parseBedrooms(housing)
       data.bathrooms = parseBathrooms(housing)
       data.square_feet = parseSquareFeet(housing)
-      // Map link often has address
       const mapAddress = $('[data-latitude]').attr('data-address')
       if (mapAddress) data.address = mapAddress
+      // Get posting body for description
+      data.description = $('#postingbody').text().replace('QR Code Link to This Post', '').trim()
       return data
     },
   },
@@ -348,8 +375,9 @@ const siteParsers: SiteParser[] = [
     match: (host) => /trulia\.com/i.test(host),
     parse: ($) => {
       const data: Partial<ScrapedListing> = {}
-      data.title = $('h1').first().text().trim() || null
-      data.price = parsePrice($('[data-testid="home-details-price"]').text())
+      data.title = $('h1').first().text().trim()
+      data.price = parsePrice($('[data-testid="home-details-price"], [class*="price"]').first().text())
+      data.address = $('[data-testid="home-details-address"]').text().trim()
       return data
     },
   },
@@ -358,12 +386,26 @@ const siteParsers: SiteParser[] = [
     match: (host) => /redfin\.com/i.test(host),
     parse: ($) => {
       const data: Partial<ScrapedListing> = {}
-      data.title = $('h1').first().text().trim() || null
+      data.title = $('h1').first().text().trim()
       data.price = parsePrice($('[class*="price"]').first().text())
-      const statsText = $('[class*="stats"], [class*="keyDetails"]').text()
+      const statsText = $('[class*="stats"], [class*="keyDetails"], [class*="HomeMainStats"]').text()
       data.bedrooms = parseBedrooms(statsText)
       data.bathrooms = parseBathrooms(statsText)
       data.square_feet = parseSquareFeet(statsText)
+      return data
+    },
+  },
+  // Realtor.com
+  {
+    match: (host) => /realtor\.com/i.test(host),
+    parse: ($) => {
+      const data: Partial<ScrapedListing> = {}
+      data.title = $('h1').first().text().trim()
+      data.price = parsePrice($('[data-testid="list-price"], [class*="price"]').first().text())
+      const details = $('[data-testid="property-meta"], [class*="PropertyMeta"]').text()
+      data.bedrooms = parseBedrooms(details)
+      data.bathrooms = parseBathrooms(details)
+      data.square_feet = parseSquareFeet(details)
       return data
     },
   },
@@ -372,27 +414,77 @@ const siteParsers: SiteParser[] = [
     match: (host) => /hotpads\.com/i.test(host),
     parse: ($) => {
       const data: Partial<ScrapedListing> = {}
-      data.title = $('h1').first().text().trim() || null
-      data.address = $('[class*="address"]').first().text().trim() || null
+      data.title = $('h1').first().text().trim()
+      data.address = $('[class*="address"]').first().text().trim()
+      data.price = parsePrice($('[class*="price"]').first().text())
       return data
     },
   },
-  // Facebook Marketplace (limited, often blocked)
+  // Rent.com
   {
-    match: (host) => /facebook\.com/i.test(host),
+    match: (host) => /rent\.com/i.test(host),
     parse: ($) => {
       const data: Partial<ScrapedListing> = {}
-      data.title = $('h1, [role="heading"]').first().text().trim() || null
+      data.title = $('h1').first().text().trim()
+      data.price = parsePrice($('[class*="price"], [data-testid="price"]').first().text())
       return data
     },
   },
 ]
 
 /* ============================================================
+ *  AI-POWERED EXTRACTION (Fallback)
+ * ============================================================ */
+
+const AIListingSchema = z.object({
+  title: z.string().nullable(),
+  price: z.number().nullable(),
+  bedrooms: z.number().nullable(),
+  bathrooms: z.number().nullable(),
+  square_feet: z.number().nullable(),
+  address: z.string().nullable(),
+  city: z.string().nullable(),
+  state: z.string().nullable(),
+  zip_code: z.string().nullable(),
+  available_date: z.string().nullable(),
+  property_type: z.string().nullable(),
+  pets_allowed: z.boolean().nullable(),
+  amenities: z.array(z.string()).default([]),
+})
+
+async function extractWithAI(htmlSnippet: string): Promise<z.infer<typeof AIListingSchema> | null> {
+  try {
+    // Truncate HTML to avoid token limits
+    const truncated = htmlSnippet.slice(0, 15000)
+
+    const { object } = await streamObject({
+      model: "openai/gpt-4o-mini",
+      schema: AIListingSchema,
+      prompt: `Extract rental listing information from this HTML. Return null for fields you cannot find with confidence.
+
+HTML:
+${truncated}
+
+Extract: title, price (monthly rent as number), bedrooms (0 for studio), bathrooms, square_feet, address (street only), city, state (2-letter code), zip_code, available_date (YYYY-MM-DD format), property_type (apartment/house/condo/townhouse/studio/room), pets_allowed (true/false), amenities (array of strings like "Washer/Dryer", "Parking", "Pool", etc.)`,
+    })
+
+    // Consume the stream
+    const result = await object
+    return result
+  } catch {
+    return null
+  }
+}
+
+/* ============================================================
  *  GENERIC PAGE PARSER
  * ============================================================ */
 
-function parseHtml(url: string, html: string): Omit<ScrapedListing, "matched_property_id" | "matched_property_address" | "confidence"> {
+async function parseHtml(
+  url: string,
+  html: string,
+  useAiFallback = true
+): Promise<Omit<ScrapedListing, "matched_property_id" | "matched_property_address" | "confidence">> {
   const $ = cheerio.load(html)
   const host = new URL(url).hostname.replace(/^www\./, "")
 
@@ -425,34 +517,32 @@ function parseHtml(url: string, html: string): Omit<ScrapedListing, "matched_pro
         }
         if (item.offers?.price && !jsonLd.price) jsonLd.price = Number(item.offers.price) || null
         if (item.numberOfBedrooms && !jsonLd.bedrooms) jsonLd.bedrooms = Number(item.numberOfBedrooms) || null
-        if (item.numberOfBathroomsTotal && !jsonLd.bathrooms) jsonLd.bathrooms = Number(item.numberOfBathroomsTotal) || null
+        if (item.numberOfBathroomsTotal && !jsonLd.bathrooms)
+          jsonLd.bathrooms = Number(item.numberOfBathroomsTotal) || null
         if (item.floorSize?.value && !jsonLd.square_feet) jsonLd.square_feet = Number(item.floorSize.value) || null
-        if (item.datePosted && !jsonLd.available_date) jsonLd.available_date = parseDate(String(item.datePosted))
         if (item.image) {
           const imgs = Array.isArray(item.image) ? item.image : [item.image]
           jsonLd.images = imgs.filter((i: unknown) => typeof i === "string").slice(0, 5)
         }
       }
-    } catch { /* ignore malformed JSON-LD */ }
+    } catch {
+      /* ignore malformed JSON-LD */
+    }
   })
 
   // 2) Meta tags
   const metaDescription =
-    $('meta[name="description"]').attr("content") ||
-    $('meta[property="og:description"]').attr("content") ||
-    ""
+    $('meta[name="description"]').attr("content") || $('meta[property="og:description"]').attr("content") || ""
   const metaTitle =
-    $('meta[property="og:title"]').attr("content") ||
-    $("h1").first().text().trim() ||
-    $("title").text().trim()
+    $('meta[property="og:title"]').attr("content") || $("h1").first().text().trim() || $("title").text().trim()
 
   // 3) Build haystack from page content
   const blocks: string[] = []
   $(
     "h1, h2, h3, p, li, span, div, " +
-    ".price, [class*='price'], [class*='Price'], [class*='rent'], [class*='Rent'], " +
-    ".description, [class*='detail'], [class*='feature'], [class*='amenity'], " +
-    "[itemprop], [data-testid]"
+      ".price, [class*='price'], [class*='Price'], [class*='rent'], [class*='Rent'], " +
+      ".description, [class*='detail'], [class*='feature'], [class*='amenity'], " +
+      "[itemprop], [data-testid]"
   ).each((_, el) => {
     const t = $(el).text().replace(/\s+/g, " ").trim()
     if (t && t.length > 3 && t.length < 1000) blocks.push(t)
@@ -468,13 +558,10 @@ function parseHtml(url: string, html: string): Omit<ScrapedListing, "matched_pro
 
   // Build description
   const description =
-    jsonLd.description ||
-    metaDescription ||
-    blocks.filter((b) => b.length > 80 && b.length < 500).slice(0, 2).join(" ") ||
-    null
+    jsonLd.description || metaDescription || blocks.filter((b) => b.length > 80 && b.length < 500).slice(0, 2).join(" ") || null
 
   // Merge all sources: site-specific > JSON-LD > regex parsing
-  return {
+  let regexResult: Omit<ScrapedListing, "matched_property_id" | "matched_property_address" | "confidence"> = {
     source_url: url,
     source_host: host,
     title: siteData.title || jsonLd.title || metaTitle || null,
@@ -492,7 +579,39 @@ function parseHtml(url: string, html: string): Omit<ScrapedListing, "matched_pro
     amenities: parseAmenities(haystack),
     pets_allowed: parsePetsAllowed(haystack),
     images: siteData.images?.length ? siteData.images : jsonLd.images?.length ? jsonLd.images : images,
+    extraction_method: "regex",
   }
+
+  // Count how many key fields we extracted
+  const keyFields = [regexResult.price, regexResult.address, regexResult.bedrooms]
+  const extractedCount = keyFields.filter((f) => f !== null).length
+
+  // If regex extraction is weak (< 2 key fields) and AI fallback is enabled, try AI
+  if (useAiFallback && extractedCount < 2) {
+    const aiResult = await extractWithAI(html)
+    if (aiResult) {
+      // Merge AI results (AI fills in gaps, doesn't override existing)
+      regexResult = {
+        ...regexResult,
+        title: regexResult.title || aiResult.title,
+        price: regexResult.price ?? aiResult.price,
+        bedrooms: regexResult.bedrooms ?? aiResult.bedrooms,
+        bathrooms: regexResult.bathrooms ?? aiResult.bathrooms,
+        square_feet: regexResult.square_feet ?? aiResult.square_feet,
+        address: regexResult.address || aiResult.address,
+        city: regexResult.city || aiResult.city,
+        state: regexResult.state || aiResult.state,
+        zip_code: regexResult.zip_code || aiResult.zip_code,
+        available_date: regexResult.available_date || aiResult.available_date,
+        property_type: regexResult.property_type || aiResult.property_type,
+        pets_allowed: regexResult.pets_allowed ?? aiResult.pets_allowed,
+        amenities: regexResult.amenities.length > 0 ? regexResult.amenities : aiResult.amenities,
+        extraction_method: extractedCount > 0 ? "hybrid" : "ai",
+      }
+    }
+  }
+
+  return regexResult
 }
 
 /* ============================================================
@@ -519,23 +638,17 @@ function normalizeStreet(addr: string): string {
 
 async function matchToAtlas(
   address: string | null,
-  city: string | null,
+  city: string | null
 ): Promise<{ id: string; address: string; score: number } | null> {
   if (!address) return null
   const supabase = await createClient()
   const normalized = normalizeStreet(address)
-  
-  // Extract street number for more precise matching
+
   const streetNum = normalized.match(/^(\d+)/)?.[1]
   const streetOnly = normalized.split(",")[0].trim()
 
-  // Build query with optional city filter
-  let query = supabase
-    .from("properties")
-    .select("id, address, city")
-    .limit(10)
+  let query = supabase.from("properties").select("id, address, city").limit(10)
 
-  // If we have a street number, use it for better matching
   if (streetNum) {
     query = query.ilike("address", `${streetNum}%`)
   } else {
@@ -546,28 +659,20 @@ async function matchToAtlas(
 
   if (!data || data.length === 0) return null
 
-  // Score matches
   const scored = data.map((row) => {
     const rowNorm = normalizeStreet(row.address || "")
     let score = 0
-    
-    // Exact street match
+
     if (rowNorm === streetOnly) score += 100
-    // Starts with same street
     else if (rowNorm.startsWith(streetOnly) || streetOnly.startsWith(rowNorm)) score += 50
-    // Contains the street
     else if (rowNorm.includes(streetOnly) || streetOnly.includes(rowNorm)) score += 25
-    
-    // City match bonus
+
     if (city && row.city?.toLowerCase() === city.toLowerCase()) score += 20
-    
-    // Street number match bonus
     if (streetNum && rowNorm.startsWith(streetNum)) score += 30
-    
+
     return { id: row.id as string, address: row.address as string, score }
   })
 
-  // Return best match if score is reasonable
   scored.sort((a, b) => b.score - a.score)
   return scored[0].score >= 25 ? scored[0] : null
 }
@@ -576,7 +681,9 @@ async function matchToAtlas(
  *  CONFIDENCE SCORING
  * ============================================================ */
 
-function calculateConfidence(listing: Omit<ScrapedListing, "matched_property_id" | "matched_property_address" | "confidence">): number {
+function calculateConfidence(
+  listing: Omit<ScrapedListing, "matched_property_id" | "matched_property_address" | "confidence">
+): number {
   let score = 0
   let maxScore = 0
 
@@ -609,10 +716,13 @@ function calculateConfidence(listing: Omit<ScrapedListing, "matched_property_id"
 export async function POST(req: Request) {
   let url: string | undefined
   let pastedHtml: string | undefined
+  let useAiFallback = true
+
   try {
-    const body = (await req.json()) as { url?: string; html?: string }
+    const body = (await req.json()) as { url?: string; html?: string; useAi?: boolean }
     url = body.url
     pastedHtml = body.html
+    useAiFallback = body.useAi !== false
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
@@ -623,7 +733,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Pasted content is too short to parse" }, { status: 400 })
     }
     const sourceUrl = "paste://local"
-    const parsed = parseHtml(sourceUrl, pastedHtml)
+    const parsed = await parseHtml(sourceUrl, pastedHtml, useAiFallback)
     const match = await matchToAtlas(parsed.address, parsed.city)
     const confidence = calculateConfidence(parsed)
     const listing: ScrapedListing = {
@@ -652,18 +762,14 @@ export async function POST(req: Request) {
 
   let html: string
   try {
-    const res = await fetch(url, {
-      headers: BROWSER_HEADERS,
-      signal: AbortSignal.timeout(20000),
-      redirect: "follow",
-    })
+    const res = await fetchWithRetry(url)
     if (!res.ok) {
       return NextResponse.json(
         {
           error: `Upstream returned ${res.status} ${res.statusText}`,
           hint: "This site is blocking the scraper. Use the Easy Paste fallback to paste the listing HTML or text directly.",
         },
-        { status: 502 },
+        { status: 502 }
       )
     }
     const contentType = res.headers.get("content-type") || ""
@@ -678,11 +784,11 @@ export async function POST(req: Request) {
         error: `Fetch failed: ${msg}`,
         hint: "This site is blocking the scraper. Use the Easy Paste fallback to paste the listing HTML or text directly.",
       },
-      { status: 502 },
+      { status: 502 }
     )
   }
 
-  const parsed = parseHtml(url, html)
+  const parsed = await parseHtml(url, html, useAiFallback)
   const match = await matchToAtlas(parsed.address, parsed.city)
   const confidence = calculateConfidence(parsed)
 

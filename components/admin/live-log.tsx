@@ -19,47 +19,53 @@ interface LiveLogProps {
   entries: LogEntry[]
   onClear?: () => void
   height?: number
+  /** Called when user clicks the WARN or ERROR filter chip — used to jump to the Repair Console */
+  onJumpToRepairs?: (status: "WARN" | "ERROR") => void
+  /** Number of pending repair items, shown next to a "Jump to Repairs" link */
+  pendingRepairsCount?: number
+  /** Called when user clicks an individual log entry (for jumping to repair dropdown) */
+  onEntryClick?: (entry: LogEntry) => void
 }
 
 const STATUS_STYLES: Record<LogStatus, { dot: string; badge: string; chip: string; chipActive: string }> = {
   SUCCESS: {
     dot: "bg-emerald-500",
-    badge: "bg-emerald-50 text-emerald-800 border-emerald-200",
-    chip: "border-emerald-200 text-emerald-700 hover:bg-emerald-50",
-    chipActive: "bg-emerald-100 border-emerald-300 text-emerald-800",
+    badge: "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800",
+    chip: "border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30",
+    chipActive: "bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-950/50 dark:border-emerald-700 dark:text-emerald-300",
   },
   FIXED: {
     dot: "bg-emerald-500",
-    badge: "bg-emerald-50 text-emerald-800 border-emerald-200",
-    chip: "border-emerald-200 text-emerald-700 hover:bg-emerald-50",
-    chipActive: "bg-emerald-100 border-emerald-300 text-emerald-800",
+    badge: "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800",
+    chip: "border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30",
+    chipActive: "bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-950/50 dark:border-emerald-700 dark:text-emerald-300",
   },
   ERROR: {
     dot: "bg-rose-500",
-    badge: "bg-rose-50 text-rose-800 border-rose-200",
-    chip: "border-rose-200 text-rose-700 hover:bg-rose-50",
-    chipActive: "bg-rose-100 border-rose-300 text-rose-800",
+    badge: "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800",
+    chip: "border-rose-200 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/30",
+    chipActive: "bg-rose-100 border-rose-300 text-rose-800 dark:bg-rose-950/50 dark:border-rose-700 dark:text-rose-300",
   },
   WARN: {
     dot: "bg-amber-500",
-    badge: "bg-amber-50 text-amber-800 border-amber-200",
-    chip: "border-amber-200 text-amber-700 hover:bg-amber-50",
-    chipActive: "bg-amber-100 border-amber-300 text-amber-800",
+    badge: "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800",
+    chip: "border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/30",
+    chipActive: "bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-950/50 dark:border-amber-700 dark:text-amber-300",
   },
   INFO: {
     dot: "bg-indigo-500",
-    badge: "bg-indigo-50 text-indigo-800 border-indigo-200",
-    chip: "border-indigo-200 text-indigo-700 hover:bg-indigo-50",
-    chipActive: "bg-indigo-100 border-indigo-300 text-indigo-800",
+    badge: "bg-indigo-50 text-indigo-800 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800",
+    chip: "border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400 dark:hover:bg-indigo-950/30",
+    chipActive: "bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-950/50 dark:border-indigo-700 dark:text-indigo-300",
   },
 }
 
 const SOURCE_BADGE: Record<LogSource, string> = {
-  SCRAPE: "bg-violet-50 text-violet-800 border-violet-200",
-  IMPORT: "bg-blue-50 text-blue-800 border-blue-200",
-  AUDIT: "bg-slate-100 text-slate-800 border-slate-300",
-  WEB: "bg-cyan-50 text-cyan-800 border-cyan-200",
-  SYSTEM: "bg-slate-100 text-slate-700 border-slate-300",
+  SCRAPE: "bg-violet-50 text-violet-800 border-violet-200 dark:bg-violet-950/50 dark:text-violet-300 dark:border-violet-800",
+  IMPORT: "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800",
+  AUDIT: "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600",
+  WEB: "bg-cyan-50 text-cyan-800 border-cyan-200 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-800",
+  SYSTEM: "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-600",
 }
 
 type FilterType = "ALL" | LogStatus
@@ -91,7 +97,7 @@ function formatTimestampShort(ts: number): string {
   })
 }
 
-export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
+export function LiveLog({ entries, onClear, height = 280, onJumpToRepairs, pendingRepairsCount = 0, onEntryClick }: LiveLogProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
   const [filter, setFilter] = useState<FilterType>("ALL")
@@ -125,20 +131,35 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
 
   const handleFilterClick = (key: FilterType) => {
     setFilter((prev) => (prev === key ? "ALL" : key))
+    if ((key === "WARN" || key === "ERROR") && onJumpToRepairs && pendingRepairsCount > 0) {
+      onJumpToRepairs(key)
+    }
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
       {/* Header strip */}
-      <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3">
+      <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-slate-900/5">
-            <Activity className="h-3.5 w-3.5 text-slate-700" />
+          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-slate-900/5 dark:bg-slate-700">
+            <Activity className="h-3.5 w-3.5 text-slate-700 dark:text-slate-300" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Activity Log</h3>
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Activity Log</h3>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
               {filteredEntries.length} of {entries.length} {entries.length === 1 ? "event" : "events"}
+              {pendingRepairsCount > 0 && onJumpToRepairs && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    onClick={() => onJumpToRepairs("WARN")}
+                    className="font-semibold text-rose-600 underline-offset-2 hover:underline dark:text-rose-400"
+                  >
+                    {pendingRepairsCount} need repair →
+                  </button>
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -149,7 +170,7 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
               size="sm"
               variant="ghost"
               onClick={() => setPaused((p) => !p)}
-              className="h-8 min-w-[44px] gap-1 px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 sm:h-7 sm:min-w-0 sm:gap-1.5"
+              className="h-8 min-w-[44px] gap-1 px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-slate-100 sm:h-7 sm:min-w-0 sm:gap-1.5"
             >
               {paused ? <Play className="h-3.5 w-3.5 sm:h-3 sm:w-3" /> : <Pause className="h-3.5 w-3.5 sm:h-3 sm:w-3" />}
               <span className="hidden sm:inline">{paused ? "Resume" : "Pause"}</span>
@@ -160,7 +181,7 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
                 size="sm"
                 variant="ghost"
                 onClick={onClear}
-                className="h-8 min-w-[44px] gap-1 px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 sm:h-7 sm:min-w-0 sm:gap-1.5"
+                className="h-8 min-w-[44px] gap-1 px-2 text-xs text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-slate-100 sm:h-7 sm:min-w-0 sm:gap-1.5"
               >
                 <Trash2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
                 <span className="hidden sm:inline">Clear</span>
@@ -171,8 +192,8 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
       </div>
 
       {/* Filter chips row */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-slate-50/50 px-3 py-2 sm:px-4">
-        <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">Filter:</span>
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 bg-slate-50/50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/50 sm:px-4">
+        <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Filter:</span>
         {FILTER_OPTIONS.map(({ key, label }) => {
           const isActive = filter === key
           const isAll = key === "ALL"
@@ -196,8 +217,8 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
                 isAll
                   ? isActive
-                    ? "border-slate-400 bg-slate-200 text-slate-800"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-100"
+                    ? "border-slate-400 bg-slate-200 text-slate-800 dark:border-slate-500 dark:bg-slate-700 dark:text-slate-200"
+                    : "border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700"
                   : isActive
                     ? styles?.chipActive
                     : styles?.chip
@@ -215,10 +236,10 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
       <div
         ref={containerRef}
         style={{ maxHeight: height }}
-        className="overflow-y-auto bg-slate-50/40 px-3 py-2.5 text-[11px] leading-relaxed text-slate-900 sm:px-4 sm:py-3 sm:text-[12px]"
+        className="overflow-y-auto bg-slate-50/40 px-3 py-2.5 text-[11px] leading-relaxed text-slate-900 dark:bg-slate-900/50 dark:text-slate-100 sm:px-4 sm:py-3 sm:text-[12px]"
       >
         {filteredEntries.length === 0 ? (
-          <div className="flex h-32 flex-col items-center justify-center gap-1.5 text-slate-400 sm:h-40">
+          <div className="flex h-32 flex-col items-center justify-center gap-1.5 text-slate-400 dark:text-slate-500 sm:h-40">
             <Activity className="h-5 w-5 opacity-40" />
             <p className="text-xs">
               {entries.length === 0 ? "Waiting for activity..." : `No ${filter.toLowerCase()} events`}
@@ -228,10 +249,19 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
           <ul className="space-y-1.5 sm:space-y-1">
             {filteredEntries.map((entry) => {
               const styles = STATUS_STYLES[entry.status]
+              const clickable = !!onEntryClick && (entry.status === "WARN" || entry.status === "ERROR")
               return (
-                <li key={entry.id} className="flex flex-wrap items-start gap-1 sm:flex-nowrap sm:gap-2">
+                <li
+                  key={entry.id}
+                  onClick={clickable ? () => onEntryClick!(entry) : undefined}
+                  className={`flex flex-wrap items-start gap-1 sm:flex-nowrap sm:gap-2 ${
+                    clickable
+                      ? "cursor-pointer rounded-md px-1 -mx-1 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800"
+                      : ""
+                  }`}
+                >
                   {/* Timestamp */}
-                  <span className="flex-shrink-0 select-none font-mono text-[10px] text-slate-400 sm:mt-0.5 sm:text-slate-500">
+                  <span className="flex-shrink-0 select-none font-mono text-[10px] text-slate-400 dark:text-slate-500 sm:mt-0.5 sm:text-slate-500">
                     <span className="hidden sm:inline">[{formatTimestamp(entry.timestamp)}]</span>
                     <span className="sm:hidden">{formatTimestampShort(entry.timestamp)}</span>
                   </span>
@@ -248,7 +278,7 @@ export function LiveLog({ entries, onClear, height = 280 }: LiveLogProps) {
                     {entry.status}
                   </span>
                   {/* Message */}
-                  <span className="w-full break-words text-slate-800 sm:w-auto sm:flex-1">{entry.message}</span>
+                  <span className="w-full break-words text-slate-800 dark:text-slate-200 sm:w-auto sm:flex-1">{entry.message}</span>
                 </li>
               )
             })}

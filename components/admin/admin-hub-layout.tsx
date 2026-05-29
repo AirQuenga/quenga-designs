@@ -5,22 +5,21 @@ import SiteHeader from "@/components/site-header"
 import SiteFooter from "@/components/site-footer"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
-import { LiveLog, type LogEntry } from "@/components/admin/live-log"
 
 interface BreadcrumbItem {
   label: string
   href?: string
 }
 
-interface AdminHubLayoutProps {
+export interface AdminHubLayoutProps {
   title: string
   description: string
   breadcrumbs: BreadcrumbItem[]
   importCard: ReactNode
   auditCard: ReactNode
   scrapeCard: ReactNode
-  logs: LogEntry[]
-  onClearLogs: () => void
+  log: ReactNode
+  children?: ReactNode
 }
 
 export function AdminHubLayout({
@@ -30,8 +29,8 @@ export function AdminHubLayout({
   importCard,
   auditCard,
   scrapeCard,
-  logs,
-  onClearLogs,
+  log,
+  children,
 }: AdminHubLayoutProps) {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
@@ -59,12 +58,15 @@ export function AdminHubLayout({
 
         {/* Unified Activity Log */}
         <div className="mt-6 sm:mt-8">
-          <LiveLog entries={logs} onClear={onClearLogs} height={320} />
+          {log}
           <p className="mt-2 text-[11px] text-slate-500 sm:text-xs">
             Tracks every Import, Audit, and Scrape event in real time. Database updates are logged only
             after Supabase confirms the write.
           </p>
         </div>
+
+        {/* Optional children (e.g., review tables) */}
+        {children}
       </main>
 
       <SiteFooter />

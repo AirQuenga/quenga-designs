@@ -2,8 +2,6 @@
 
 import { useMemo, useState, useTransition } from "react"
 import Link from "next/link"
-import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport } from "ai"
 import {
   ArrowLeft,
   ChevronRight,
@@ -15,14 +13,13 @@ import {
   Loader2,
   RefreshCw,
   Search,
-  Send,
-  Sparkles,
 } from "lucide-react"
 import SiteHeader from "@/components/site-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CodeViewer } from "@/components/workspace/code-viewer"
+import { CopilotChat } from "@/components/workspace/copilot-chat"
 import {
   getFileContent,
   getRepoTree,
@@ -146,28 +143,6 @@ export function WorkspaceShell({ meta, initialBranches, initialTree }: Props) {
         setActiveFile(file)
       }
     })
-  }
-
-  /* -------- Copilot chat -------- */
-  const [chatInput, setChatInput] = useState("")
-  const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/copilot" }),
-  })
-
-  function submitChat(e: React.FormEvent) {
-    e.preventDefault()
-    if (!chatInput.trim() || status === "streaming") return
-    sendMessage(
-      { text: chatInput },
-      {
-        body: {
-          activeFilePath: activePath,
-          activeFileContent: activeFile?.encoding === "utf-8" ? activeFile.content : undefined,
-          branch,
-        },
-      },
-    )
-    setChatInput("")
   }
 
   return (
@@ -295,83 +270,8 @@ export function WorkspaceShell({ meta, initialBranches, initialTree }: Props) {
           </div>
         </main>
 
-        {/* RIGHT — AI Copilot */}
-        <aside className="flex min-h-0 flex-col border-t border-border bg-card lg:border-t-0 lg:border-l">
-          <div className="flex flex-shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">AI Copilot</p>
-              <p className="truncate text-[10px] text-muted-foreground">
-                {activePath ? `Context: ${activePath}` : "No file context"}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex-1 space-y-3 overflow-y-auto p-3" style={{ maxHeight: "50vh" }}>
-            {messages.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-                <p className="mb-1.5 font-semibold text-foreground">Ask the Copilot anything.</p>
-                <ul className="ml-3 list-disc space-y-0.5">
-                  <li>&quot;Explain this file&quot;</li>
-                  <li>&quot;Refactor the loop on line 42&quot;</li>
-                  <li>&quot;Convert this to a server component&quot;</li>
-                </ul>
-              </div>
-            ) : (
-              messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={
-                    m.role === "user"
-                      ? "ml-4 rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground"
-                      : "mr-4 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs"
-                  }
-                >
-                  {m.parts
-                    ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
-                    .map((p, i) => (
-                      <div key={i} className="whitespace-pre-wrap break-words font-mono leading-relaxed">
-                        {p.text}
-                      </div>
-                    ))}
-                </div>
-              ))
-            )}
-            {status === "streaming" && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking…
-              </div>
-            )}
-          </div>
-
-          <form onSubmit={submitChat} className="flex-shrink-0 border-t border-border p-2">
-            <div className="flex items-end gap-1.5">
-              <textarea
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault()
-                    submitChat(e)
-                  }
-                }}
-                placeholder="Ask, refactor, generate…"
-                rows={2}
-                className="flex-1 resize-none rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
-              />
-              <Button
-                type="submit"
-                size="sm"
-                disabled={!chatInput.trim() || status === "streaming"}
-                className="h-9 w-9 flex-shrink-0 p-0"
-              >
-                <Send className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </form>
-        </aside>
+        {/* RIGHT — Enhanced AI Copilot with Model Selector */}
+        <CopilotChat activeFilePath={activePath ?? undefined} activeFileContent={activeFile?.content ?? undefined} branch={branch} />
       </div>
     </div>
   )

@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import type { PropertyFilters } from "@/types/property"
+import type { PropertyType, ManagementType } from "@/config/enums"
 import { Search, X, SlidersHorizontal, Eye } from "lucide-react"
 
 interface MapFilters {
@@ -182,7 +183,7 @@ export function FilterSidebar({
           <Label className="text-sm font-medium">Property Type</Label>
           <Select
             value={filters.propertyType ?? "all"}
-            onValueChange={(value) => updateFilter("propertyType", value === "all" ? undefined : value)}
+            onValueChange={(value) => updateFilter("propertyType", value === "all" ? undefined : value as PropertyType)}
           >
             <SelectTrigger>
               <SelectValue placeholder="All types" />
@@ -234,7 +235,7 @@ export function FilterSidebar({
           <Label className="text-sm font-medium">Management Type</Label>
           <Select
             value={filters.managementType ?? "all"}
-            onValueChange={(value) => updateFilter("managementType", value === "all" ? undefined : value)}
+            onValueChange={(value) => updateFilter("managementType", value === "all" ? undefined : value as ManagementType)}
           >
             <SelectTrigger>
               <SelectValue placeholder="All types" />
