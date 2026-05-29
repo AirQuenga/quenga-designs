@@ -125,7 +125,7 @@ export function AddressSearch({
   placeholder = "Start typing an address in Chico, CA…",
 }: AddressSearchProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const autocompleteRef = useRef<ReturnType<typeof window.google.maps.places.Autocomplete.prototype.valueOf> | null>(null)
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
   const selectedRef = useRef<ParsedAddress | null>(null)
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_PLACES_API_KEY
