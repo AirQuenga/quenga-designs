@@ -8,7 +8,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRight, ArrowLeft } from "lucide-react"
+import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRight, ArrowLeft, Edit2 } from "lucide-react"
+import { ServiceEditDialog } from "./service-edit-dialog"
 
 const PAGE_SIZE = 25
 const SEARCH_DEBOUNCE_MS = 300
@@ -21,22 +22,22 @@ const SEARCH_DEBOUNCE_MS = 300
  *           (so "Food" matches "Food Assistance", "Seniors" matches "Senior Services", etc.)
  */
 const CATEGORIES: { label: string; match: string }[] = [
-  { label: "Clothing", match: "Cloth" },
+  { label: "Clothing", match: "Clothing" },
   { label: "Education", match: "Education" },
   { label: "Emergency", match: "Emergency" },
-  { label: "Employment", match: "Employ" },
+  { label: "Employment", match: "Employment" },
   { label: "Family", match: "Family" },
   { label: "Food", match: "Food" },
   { label: "Housing", match: "Housing" },
   { label: "Legal", match: "Legal" },
-  { label: "Medical", match: "Health" },
-  { label: "Other", match: "General" },
-  { label: "Seniors", match: "Senior" },
+  { label: "Medical", match: "Medical" },
+  { label: "Other", match: "Other" },
+  { label: "Seniors", match: "Seniors" },
   { label: "Shelter", match: "Shelter" },
   { label: "Substance", match: "Substance" },
-  { label: "Transportation", match: "Transport" },
-  { label: "Utilities", match: "Utilit" },
-  { label: "Veterans", match: "Veteran" },
+  { label: "Transportation", match: "Transportation" },
+  { label: "Utilities", match: "Utilities" },
+  { label: "Veterans", match: "Veterans" },
 ]
 
 export function CommunityServicesDirectory() {
@@ -268,90 +269,109 @@ export function CommunityServicesDirectory() {
 
 function ServiceCard({ service }: { service: CommunityService }) {
   const [showDetails, setShowDetails] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
 
   return (
-    <li className="rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="text-base font-semibold text-foreground sm:text-lg">{service.resource_name}</h4>
-            <Badge className="bg-primary/10 text-primary hover:bg-primary/10">{service.category}</Badge>
-            {service.sub_category && (
-              <Badge variant="outline" className="text-xs">
-                {service.sub_category}
-              </Badge>
-            )}
+    <>
+      <li className="rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-base font-semibold text-foreground sm:text-lg">{service.resource_name}</h4>
+              <Badge className="bg-primary/10 text-primary hover:bg-primary/10">{service.category}</Badge>
+              {service.sub_category && (
+                <Badge variant="outline" className="text-xs">
+                  {service.sub_category}
+                </Badge>
+              )}
+            </div>
+
+            <dl className="mt-3 grid gap-1.5 text-sm sm:grid-cols-2">
+              {service.address && (
+                <div className="flex items-start gap-2 text-muted-foreground">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                  <span className="text-pretty">{service.address}</span>
+                </div>
+              )}
+              {service.phone_number && (
+                <div className="flex items-start gap-2 text-muted-foreground">
+                  <Phone className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                  <a
+                    href={`tel:${service.phone_number}`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {service.phone_number}
+                  </a>
+                </div>
+              )}
+              {service.hours && (
+                <div className="flex items-start gap-2 text-muted-foreground">
+                  <Clock className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                  <span>{service.hours}</span>
+                </div>
+              )}
+              {service.website && (
+                <div className="flex items-start gap-2 text-muted-foreground">
+                  <Globe className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                  <a
+                    href={service.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-primary hover:underline"
+                  >
+                    Visit website
+                  </a>
+                </div>
+              )}
+            </dl>
           </div>
 
-          <dl className="mt-3 grid gap-1.5 text-sm sm:grid-cols-2">
-            {service.address && (
-              <div className="flex items-start gap-2 text-muted-foreground">
-                <MapPin className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                <span className="text-pretty">{service.address}</span>
-              </div>
-            )}
-            {service.phone_number && (
-              <div className="flex items-start gap-2 text-muted-foreground">
-                <Phone className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                <a
-                  href={`tel:${service.phone_number}`}
-                  className="font-medium text-primary hover:underline"
-                >
-                  {service.phone_number}
-                </a>
-              </div>
-            )}
-            {service.hours && (
-              <div className="flex items-start gap-2 text-muted-foreground">
-                <Clock className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                <span>{service.hours}</span>
-              </div>
-            )}
-            {service.website && (
-              <div className="flex items-start gap-2 text-muted-foreground">
-                <Globe className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                <a
-                  href={service.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-primary hover:underline"
-                >
-                  Visit website
-                </a>
-              </div>
-            )}
-          </dl>
+          <div className="flex gap-2 self-start">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDetails((v) => !v)}
+              aria-expanded={showDetails}
+            >
+              {showDetails ? "Hide details" : "Details"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEditDialog(true)}
+              className="gap-1.5"
+            >
+              <Edit2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Edit</span>
+            </Button>
+          </div>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowDetails((v) => !v)}
-          className="self-start"
-          aria-expanded={showDetails}
-        >
-          {showDetails ? "Hide details" : "Details"}
-        </Button>
-      </div>
+        {showDetails && (service.notes || service.other_contact_info) && (
+          <div className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
+            {service.notes && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notes</p>
+                <p className="mt-1 whitespace-pre-wrap text-foreground">{service.notes}</p>
+              </div>
+            )}
+            {service.other_contact_info && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Other Contact
+                </p>
+                <p className="mt-1 whitespace-pre-wrap text-foreground">{service.other_contact_info}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </li>
 
-      {showDetails && (service.notes || service.other_contact_info) && (
-        <div className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
-          {service.notes && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Notes</p>
-              <p className="mt-1 whitespace-pre-wrap text-foreground">{service.notes}</p>
-            </div>
-          )}
-          {service.other_contact_info && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Other Contact
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-foreground">{service.other_contact_info}</p>
-            </div>
-          )}
-        </div>
-      )}
-    </li>
+      <ServiceEditDialog
+        service={service}
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+      />
+    </>
   )
 }
