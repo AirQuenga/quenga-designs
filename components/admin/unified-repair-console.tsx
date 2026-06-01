@@ -152,6 +152,7 @@ export function UnifiedRepairConsole<F extends string = string>({
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [savingId, setSavingId] = useState<string | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   /* Seed initial statuses + auto-prefill values from server-supplied prefills. */
   useEffect(() => {
@@ -351,12 +352,35 @@ export function UnifiedRepairConsole<F extends string = string>({
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       {/* Header */}
       <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-          {description && <p className="text-xs text-slate-500">{description}</p>}
-        </div>
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand repair console" : "Collapse repair console"}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-500" />
+          ) : (
+            <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-500" />
+          )}
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-slate-900">{title}</h3>
+            {description && <p className="truncate text-xs text-slate-500">{description}</p>}
+          </div>
+        </button>
         <div className="flex items-center gap-2">
-          {selectedCount > 0 && tab === "needs-fix" && (
+          {collapsed && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <Badge variant="outline" className="border-rose-200 bg-rose-50 text-rose-700">
+                {counts["needs-fix"]} to fix
+              </Badge>
+              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                {counts.fixed} fixed
+              </Badge>
+            </div>
+          )}
+          {!collapsed && selectedCount > 0 && tab === "needs-fix" && (
             <Button
               size="sm"
               onClick={bulkApprove}
@@ -370,15 +394,17 @@ export function UnifiedRepairConsole<F extends string = string>({
         </div>
       </div>
 
-      {/* Tri-State tabs */}
-      <div className="flex border-b border-slate-200 bg-white">
-        <TabButton active={tab === "needs-fix"} onClick={() => setTab("needs-fix")} label="Needs Fix" count={counts["needs-fix"]} tone="rose" />
-        <TabButton active={tab === "pending"} onClick={() => setTab("pending")} label="Pending Review" count={counts.pending} tone="amber" />
-        <TabButton active={tab === "fixed"} onClick={() => setTab("fixed")} label="Fixed" count={counts.fixed} tone="emerald" />
-      </div>
+      {!collapsed && (
+        <>
+          {/* Tri-State tabs */}
+          <div className="flex border-b border-slate-200 bg-white">
+            <TabButton active={tab === "needs-fix"} onClick={() => setTab("needs-fix")} label="Needs Fix" count={counts["needs-fix"]} tone="rose" />
+            <TabButton active={tab === "pending"} onClick={() => setTab("pending")} label="Pending Review" count={counts.pending} tone="amber" />
+            <TabButton active={tab === "fixed"} onClick={() => setTab("fixed")} label="Fixed" count={counts.fixed} tone="emerald" />
+          </div>
 
-      {/* List */}
-      {visibleItems.length === 0 ? (
+          {/* List */}
+          {visibleItems.length === 0 ? (
         <div className="px-4 py-12 text-center text-sm text-slate-500">
           {tab === "needs-fix"
             ? "Nothing to repair — every record passes validation."
@@ -416,6 +442,8 @@ export function UnifiedRepairConsole<F extends string = string>({
             </li>
           )}
         </ul>
+          )}
+        </>
       )}
     </div>
   )

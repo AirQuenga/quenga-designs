@@ -3,12 +3,22 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   getCommunityServices,
+  getCommunityServiceSubcategories,
   type CommunityService,
+  type CommunityServiceSortField,
+  type SortDirection,
 } from "@/app/actions/get-community-services"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRight, ArrowLeft, Edit2 } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRight, ArrowLeft, Edit2, ArrowDownUp } from "lucide-react"
 import { ServiceEditDialog } from "./service-edit-dialog"
 
 const PAGE_SIZE = 25
@@ -40,6 +50,22 @@ const CATEGORIES: { label: string; match: string }[] = [
   { label: "Veterans", match: "Veterans" },
 ]
 
+/** Sort presets for the All Resources list. */
+const SORT_OPTIONS: {
+  value: string
+  label: string
+  sortField: CommunityServiceSortField
+  sortDir: SortDirection
+}[] = [
+  { value: "newest", label: "Newest first", sortField: "created_at", sortDir: "desc" },
+  { value: "updated", label: "Recently updated", sortField: "updated_at", sortDir: "desc" },
+  { value: "name-asc", label: "Name (A–Z)", sortField: "resource_name", sortDir: "asc" },
+  { value: "name-desc", label: "Name (Z–A)", sortField: "resource_name", sortDir: "desc" },
+  { value: "category", label: "Category (A–Z)", sortField: "category", sortDir: "asc" },
+]
+
+const ALL_FILTER = "__all__"
+
 export function CommunityServicesDirectory() {
   const [services, setServices] = useState<CommunityService[]>([])
   const [loading, setLoading] = useState(false)
@@ -54,10 +80,19 @@ export function CommunityServicesDirectory() {
   const [allTotal, setAllTotal] = useState(0)
   const [allTotalPages, setAllTotalPages] = useState(0)
 
+  // Sorting + filtering controls for the All Resources list
+  const [allSort, setAllSort] = useState<string>("name-asc")
+  const [allCategory, setAllCategory] = useState<string>(ALL_FILTER)
+  const [allSubCategory, setAllSubCategory] = useState<string>(ALL_FILTER)
+  const [subcategoryOptions, setSubcategoryOptions] = useState<string[]>([])
+
   // Two-tier search: input value (immediate) + committed query (debounced)
   const [searchInput, setSearchInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
+
+  // Bumped after an edit saves so both lists re-fetch fresh data.
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // A "browsing" state means the user has selected a category or typed a search.
   // Until then, show the FindHelp-style landing (search hero + category grid only).
@@ -99,14 +134,40 @@ export function CommunityServicesDirectory() {
     return () => {
       cancelled = true
     }
-  }, [isBrowsing, activeCategory, searchQuery, page])
+  }, [isBrowsing, activeCategory, searchQuery, page, refreshKey])
 
-  // Fetch the full directory for the landing "All resources" list
+  // Keep the subcategory filter options in sync with the chosen main category.
+  useEffect(() => {
+    let cancelled = false
+    const cat = allCategory === ALL_FILTER ? undefined : allCategory
+    getCommunityServiceSubcategories(cat).then((opts) => {
+      if (cancelled) return
+      setSubcategoryOptions(opts)
+      // Drop a stale subcategory selection that no longer applies.
+      setAllSubCategory((prev) => (prev !== ALL_FILTER && !opts.includes(prev) ? ALL_FILTER : prev))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [allCategory])
+
+  // Fetch the full directory for the landing "All resources" list,
+  // honoring the sort + filter controls above it.
   useEffect(() => {
     if (isBrowsing) return
     let cancelled = false
     setAllLoading(true)
-    getCommunityServices({}, allPage, PAGE_SIZE).then((res) => {
+    const sort = SORT_OPTIONS.find((s) => s.value === allSort) ?? SORT_OPTIONS[2]
+    getCommunityServices(
+      {
+        category: allCategory === ALL_FILTER ? undefined : allCategory,
+        subCategory: allSubCategory === ALL_FILTER ? undefined : allSubCategory,
+        sortField: sort.sortField,
+        sortDir: sort.sortDir,
+      },
+      allPage,
+      PAGE_SIZE,
+    ).then((res) => {
       if (cancelled) return
       setAllServices(res.services)
       setAllTotal(res.total)
@@ -116,7 +177,12 @@ export function CommunityServicesDirectory() {
     return () => {
       cancelled = true
     }
-  }, [isBrowsing, allPage])
+  }, [isBrowsing, allPage, allSort, allCategory, allSubCategory, refreshKey])
+
+  // Reset to page 1 whenever the All Resources sort/filters change.
+  useEffect(() => {
+    setAllPage(1)
+  }, [allSort, allCategory, allSubCategory])
 
   const clearAll = () => {
     setSearchInput("")
@@ -210,6 +276,80 @@ export function CommunityServicesDirectory() {
             </span>
           </div>
 
+          {/* Sort + filter controls */}
+          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:flex-row sm:items-end sm:gap-4">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Sort by</label>
+              <Select value={allSort} onValueChange={setAllSort}>
+                <SelectTrigger className="h-9">
+                  <ArrowDownUp className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Category</label>
+              <Select value={allCategory} onValueChange={setAllCategory}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="All categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_FILTER}>All categories</SelectItem>
+                  {CATEGORIES.map((c) => (
+                    <SelectItem key={c.match} value={c.match}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Subcategory</label>
+              <Select
+                value={allSubCategory}
+                onValueChange={setAllSubCategory}
+                disabled={subcategoryOptions.length === 0}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="All subcategories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_FILTER}>All subcategories</SelectItem>
+                  {subcategoryOptions.map((sc) => (
+                    <SelectItem key={sc} value={sc}>
+                      {sc}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {(allCategory !== ALL_FILTER || allSubCategory !== ALL_FILTER || allSort !== "name-asc") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setAllSort("name-asc")
+                  setAllCategory(ALL_FILTER)
+                  setAllSubCategory(ALL_FILTER)
+                }}
+                className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+                Reset
+              </Button>
+            )}
+          </div>
+
           {allLoading && allServices.length === 0 ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -226,7 +366,7 @@ export function CommunityServicesDirectory() {
           ) : (
             <ul className="space-y-3">
               {allServices.map((s) => (
-                <ServiceCard key={s.id} service={s} />
+                <ServiceCard key={s.id} service={s} onSaved={() => setRefreshKey((k) => k + 1)} />
               ))}
             </ul>
           )}
@@ -312,7 +452,7 @@ export function CommunityServicesDirectory() {
           ) : (
             <ul className="space-y-3">
               {services.map((s) => (
-                <ServiceCard key={s.id} service={s} />
+                <ServiceCard key={s.id} service={s} onSaved={() => setRefreshKey((k) => k + 1)} />
               ))}
             </ul>
           )}
@@ -353,9 +493,16 @@ export function CommunityServicesDirectory() {
 
 /* ---------- Single Civic Card ---------- */
 
-function ServiceCard({ service }: { service: CommunityService }) {
+function ServiceCard({ service, onSaved }: { service: CommunityService; onSaved?: () => void }) {
   const [showDetails, setShowDetails] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
+
+  // Merge the multi-tag array with the legacy single column, de-duplicated.
+  const subCategoryTags = useMemo(() => {
+    const tags = [...(service.sub_categories ?? [])]
+    if (service.sub_category && !tags.includes(service.sub_category)) tags.unshift(service.sub_category)
+    return tags.filter(Boolean)
+  }, [service.sub_categories, service.sub_category])
 
   return (
     <>
@@ -365,11 +512,11 @@ function ServiceCard({ service }: { service: CommunityService }) {
             <div className="flex flex-wrap items-center gap-2">
               <h4 className="text-base font-semibold text-foreground sm:text-lg">{service.resource_name}</h4>
               <Badge className="bg-primary/10 text-primary hover:bg-primary/10">{service.category}</Badge>
-              {service.sub_category && (
-                <Badge variant="outline" className="text-xs">
-                  {service.sub_category}
+              {subCategoryTags.map((tag) => (
+                <Badge key={tag} variant="outline" className="text-xs">
+                  {tag}
                 </Badge>
-              )}
+              ))}
             </div>
 
             <dl className="mt-3 grid gap-1.5 text-sm sm:grid-cols-2">
@@ -457,6 +604,7 @@ function ServiceCard({ service }: { service: CommunityService }) {
         service={service}
         open={showEditDialog}
         onOpenChange={setShowEditDialog}
+        onSaved={onSaved}
       />
     </>
   )

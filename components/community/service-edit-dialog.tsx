@@ -1,7 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { type CommunityService } from "@/app/actions/get-community-services"
+import { useEffect, useState } from "react"
+import {
+  getCommunityServiceSubcategories,
+  type CommunityService,
+} from "@/app/actions/get-community-services"
 import { updateCommunityService } from "@/app/actions/update-community-service"
 import {
   Dialog,
@@ -15,15 +18,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Loader2, Check, AlertCircle } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Loader2, Check, AlertCircle, Plus, X } from "lucide-react"
 
 interface ServiceEditDialogProps {
   service: CommunityService
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Called after a successful save so the parent list can refresh. */
+  onSaved?: () => void
 }
 
-export function ServiceEditDialog({ service, open, onOpenChange }: ServiceEditDialogProps) {
+export function ServiceEditDialog({ service, open, onOpenChange, onSaved }: ServiceEditDialogProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -36,6 +42,40 @@ export function ServiceEditDialog({ service, open, onOpenChange }: ServiceEditDi
     notes: service.notes ?? "",
     other_contact_info: service.other_contact_info ?? "",
   })
+
+  // Category + multi-subcategory management
+  const initialSubcategories = (() => {
+    const tags = [...(service.sub_categories ?? [])]
+    if (service.sub_category && !tags.includes(service.sub_category)) tags.unshift(service.sub_category)
+    return tags.filter(Boolean)
+  })()
+  const [category, setCategory] = useState(service.category ?? "")
+  const [subCategories, setSubCategories] = useState<string[]>(initialSubcategories)
+  const [newSubCategory, setNewSubCategory] = useState("")
+  const [suggestions, setSuggestions] = useState<string[]>([])
+
+  // Load existing subcategories under this main category as quick-add suggestions.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    getCommunityServiceSubcategories(category || undefined).then((opts) => {
+      if (!cancelled) setSuggestions(opts)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, category])
+
+  const addSubCategory = (raw: string) => {
+    const value = raw.trim()
+    if (!value) return
+    setSubCategories((prev) => (prev.some((s) => s.toLowerCase() === value.toLowerCase()) ? prev : [...prev, value]))
+    setNewSubCategory("")
+  }
+
+  const removeSubCategory = (value: string) => {
+    setSubCategories((prev) => prev.filter((s) => s !== value))
+  }
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -61,12 +101,15 @@ export function ServiceEditDialog({ service, open, onOpenChange }: ServiceEditDi
         hours: formData.hours || null,
         notes: formData.notes || null,
         other_contact_info: formData.other_contact_info || null,
+        category: category.trim() || null,
+        sub_categories: subCategories,
       })
 
       if (!result.success) {
         setError(result.message)
       } else {
         setSuccess(true)
+        onSaved?.()
         setTimeout(() => {
           onOpenChange(false)
           setSuccess(false)
@@ -91,6 +134,106 @@ export function ServiceEditDialog({ service, open, onOpenChange }: ServiceEditDi
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Category */}
+          <div className="space-y-2">
+            <Label htmlFor="category">Main Category</Label>
+            <Input
+              id="category"
+              name="category"
+              placeholder="e.g. Medical"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              disabled={loading}
+            />
+            <p className="text-xs text-muted-foreground">
+              The primary category this resource falls under.
+            </p>
+          </div>
+
+          {/* Subcategories */}
+          <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-3">
+            <Label>Subcategories</Label>
+            <p className="text-xs text-muted-foreground">
+              Assign one or more subcategories so this resource can appear under multiple groupings within
+              its main category.
+            </p>
+
+            {/* Current tags */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {subCategories.length === 0 ? (
+                <span className="text-xs text-muted-foreground">No subcategories assigned yet.</span>
+              ) : (
+                subCategories.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="gap-1 pr-1">
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => removeSubCategory(tag)}
+                      disabled={loading}
+                      aria-label={`Remove ${tag}`}
+                      className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-foreground/10"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))
+              )}
+            </div>
+
+            {/* Add new tag */}
+            <div className="flex gap-2 pt-1">
+              <Input
+                value={newSubCategory}
+                onChange={(e) => setNewSubCategory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    addSubCategory(newSubCategory)
+                  }
+                }}
+                placeholder="Add a subcategory…"
+                disabled={loading}
+                className="h-9"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => addSubCategory(newSubCategory)}
+                disabled={loading || !newSubCategory.trim()}
+                className="h-9 gap-1.5"
+              >
+                <Plus className="h-4 w-4" />
+                Add
+              </Button>
+            </div>
+
+            {/* Suggestions from existing taxonomy */}
+            {suggestions.filter((s) => !subCategories.some((c) => c.toLowerCase() === s.toLowerCase())).length >
+              0 && (
+              <div className="pt-1">
+                <p className="text-xs font-medium text-muted-foreground">Existing subcategories</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {suggestions
+                    .filter((s) => !subCategories.some((c) => c.toLowerCase() === s.toLowerCase()))
+                    .slice(0, 12)
+                    .map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => addSubCategory(s)}
+                        disabled={loading}
+                        className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                      >
+                        <Plus className="h-3 w-3" />
+                        {s}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Address */}
           <div className="space-y-2">
             <Label htmlFor="address">Address</Label>

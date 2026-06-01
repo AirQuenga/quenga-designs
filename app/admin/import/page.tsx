@@ -249,7 +249,7 @@ export default function PropertyDataHubPage() {
       appendLog("AUDIT", "INFO", `Starting Staging Audit of ${total.toLocaleString()} records (batch size 25, NO direct writes)`)
       
       let offset = 0
-      const allFixes: PendingFix[] = []
+      let totalStaged = 0
       
       while (true) {
         if (stopAuditRef.current) {
@@ -259,10 +259,17 @@ export default function PropertyDataHubPage() {
         const res = await auditStagingBatch(offset, 25)
         setAuditScanned((p) => p + res.scanned)
         
-        // Collect pending fixes
+        // Stream pending fixes into the console as each batch completes so they
+        // can be reviewed and edited live, while the audit keeps running.
         if (res.pendingFixes.length > 0) {
-          allFixes.push(...res.pendingFixes)
+          totalStaged += res.pendingFixes.length
           setAuditFixed((p) => p + res.pendingFixes.length)
+          setPendingFixes((prev) => {
+            // Skip any fixes for properties the user already cleared mid-run.
+            const seen = new Set(prev.map((f) => f.id))
+            const additions = res.pendingFixes.filter((f) => !seen.has(f.id))
+            return additions.length > 0 ? [...prev, ...additions] : prev
+          })
         }
         
         // Log errors
@@ -276,13 +283,11 @@ export default function PropertyDataHubPage() {
         }
         
         if (res.nextOffset === null) {
-          appendLog("AUDIT", "SUCCESS", `Scan complete — ${allFixes.length} pending fixes awaiting review`)
+          appendLog("AUDIT", "SUCCESS", `Scan complete — ${totalStaged} pending fixes awaiting review`)
           break
         }
         offset = res.nextOffset
       }
-      
-      setPendingFixes(allFixes)
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error"
       appendLog("AUDIT", "ERROR", `Audit halted: ${msg}`)

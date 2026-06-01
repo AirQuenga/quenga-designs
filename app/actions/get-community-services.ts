@@ -6,6 +6,8 @@ export interface CommunityService {
   id: string
   category: string
   sub_category: string | null
+  /** Multiple subcategory tags under the main category. */
+  sub_categories: string[]
   resource_name: string
   hours: string | null
   address: string | null
@@ -17,6 +19,9 @@ export interface CommunityService {
   created_at: string
   updated_at: string
 }
+
+export type CommunityServiceSortField = "resource_name" | "category" | "created_at" | "updated_at"
+export type SortDirection = "asc" | "desc"
 
 export interface GetCommunityServicesResult {
   services: CommunityService[]
@@ -32,7 +37,10 @@ export interface GetCommunityServicesResult {
 export async function getCommunityServices(
   filters?: {
     category?: string
+    subCategory?: string
     searchTerm?: string
+    sortField?: CommunityServiceSortField
+    sortDir?: SortDirection
   },
   page = 1,
   pageSize = 50,
@@ -48,6 +56,13 @@ export async function getCommunityServices(
     query = query.ilike("category", `%${filters.category}%`)
   }
 
+  if (filters?.subCategory) {
+    // Match either the new array column (contains) or the legacy single column.
+    query = query.or(
+      `sub_categories.cs.{"${filters.subCategory}"},sub_category.ilike.%${filters.subCategory}%`,
+    )
+  }
+
   if (filters?.searchTerm) {
     const term = `%${filters.searchTerm}%`
     query = query.or(
@@ -55,10 +70,19 @@ export async function getCommunityServices(
     )
   }
 
-  const { data, error, count } = await query
-    .order("category", { ascending: true })
-    .order("resource_name", { ascending: true })
-    .range(offset, offset + pageSize - 1)
+  const sortField = filters?.sortField ?? "resource_name"
+  const ascending = (filters?.sortDir ?? "asc") === "asc"
+
+  if (sortField === "resource_name") {
+    query = query.order("resource_name", { ascending })
+  } else if (sortField === "category") {
+    query = query.order("category", { ascending }).order("resource_name", { ascending: true })
+  } else {
+    // created_at / updated_at
+    query = query.order(sortField, { ascending, nullsFirst: false })
+  }
+
+  const { data, error, count } = await query.range(offset, offset + pageSize - 1)
 
   if (error) {
     console.error("[v0] Error fetching community services:", error)
@@ -89,6 +113,29 @@ export async function getCommunityServiceCategories(): Promise<string[]> {
 
   const unique = Array.from(new Set(data.map((r) => r.category).filter(Boolean))) as string[]
   return unique
+}
+
+/**
+ * Get the distinct set of subcategories, optionally scoped to a single main
+ * category. Merges the legacy single `sub_category` column with the new
+ * `sub_categories` array so the taxonomy is complete.
+ */
+export async function getCommunityServiceSubcategories(category?: string): Promise<string[]> {
+  const supabase = await createClient()
+  let query = supabase.from("community_services").select("sub_category, sub_categories")
+  if (category) query = query.ilike("category", `%${category}%`)
+
+  const { data, error } = await query
+  if (error || !data) return []
+
+  const set = new Set<string>()
+  for (const row of data as { sub_category: string | null; sub_categories: string[] | null }[]) {
+    if (row.sub_category && row.sub_category.trim()) set.add(row.sub_category.trim())
+    for (const sc of row.sub_categories ?? []) {
+      if (sc && sc.trim()) set.add(sc.trim())
+    }
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b))
 }
 
 /**
