@@ -18,8 +18,27 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Loader2, Check, AlertCircle, Plus, X } from "lucide-react"
+
+/** The 16 standard categories surfaced as selectable tag-pills. */
+const STANDARD_CATEGORIES = [
+  "Clothing",
+  "Education",
+  "Emergency",
+  "Employment",
+  "Family",
+  "Food",
+  "Housing",
+  "Legal",
+  "Medical",
+  "Other",
+  "Seniors",
+  "Shelter",
+  "Substance",
+  "Transportation",
+  "Utilities",
+  "Veterans",
+]
 
 interface ServiceEditDialogProps {
   service: CommunityService
@@ -41,6 +60,7 @@ export function ServiceEditDialog({ service, open, onOpenChange, onSaved }: Serv
     hours: service.hours ?? "",
     notes: service.notes ?? "",
     other_contact_info: service.other_contact_info ?? "",
+    back_door_contacts: service.back_door_contacts ?? "",
   })
 
   // Category + multi-subcategory management
@@ -101,6 +121,7 @@ export function ServiceEditDialog({ service, open, onOpenChange, onSaved }: Serv
         hours: formData.hours || null,
         notes: formData.notes || null,
         other_contact_info: formData.other_contact_info || null,
+        back_door_contacts: formData.back_door_contacts || null,
         category: category.trim() || null,
         sub_categories: subCategories,
       })
@@ -122,9 +143,14 @@ export function ServiceEditDialog({ service, open, onOpenChange, onSaved }: Serv
     }
   }
 
+  // Subcategories not yet assigned, surfaced as quick-add chips.
+  const unusedSuggestions = suggestions.filter(
+    (s) => !subCategories.some((c) => c.toLowerCase() === s.toLowerCase()),
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[92vh] w-[95vw] overflow-y-auto rounded-xl border-slate-200 bg-white sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Edit Service Information</DialogTitle>
           <DialogDescription>
@@ -134,196 +160,235 @@ export function ServiceEditDialog({ service, open, onOpenChange, onSaved }: Serv
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Category */}
-          <div className="space-y-2">
-            <Label htmlFor="category">Main Category</Label>
-            <Input
-              id="category"
-              name="category"
-              placeholder="e.g. Medical"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              disabled={loading}
-            />
-            <p className="text-xs text-muted-foreground">
-              The primary category this resource falls under.
-            </p>
-          </div>
-
-          {/* Subcategories */}
-          <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-3">
-            <Label>Subcategories</Label>
-            <p className="text-xs text-muted-foreground">
-              Assign one or more subcategories so this resource can appear under multiple groupings within
-              its main category.
-            </p>
-
-            {/* Current tags */}
-            <div className="flex flex-wrap gap-2 pt-1">
-              {subCategories.length === 0 ? (
-                <span className="text-xs text-muted-foreground">No subcategories assigned yet.</span>
-              ) : (
-                subCategories.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="gap-1 pr-1">
-                    {tag}
+          {/* ---------- CATEGORIZATION ---------- */}
+          <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            {/* Main Category as selectable tag-pills */}
+            <div className="space-y-2">
+              <Label>Main Category</Label>
+              <p className="text-xs text-muted-foreground">
+                Select the single primary category this resource falls under.
+              </p>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {STANDARD_CATEGORIES.map((cat) => {
+                  const active = category.toLowerCase() === cat.toLowerCase()
+                  return (
                     <button
+                      key={cat}
                       type="button"
-                      onClick={() => removeSubCategory(tag)}
+                      onClick={() => setCategory(cat)}
                       disabled={loading}
-                      aria-label={`Remove ${tag}`}
-                      className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-foreground/10"
+                      aria-pressed={active}
+                      className={
+                        active
+                          ? "rounded-full border border-primary bg-primary px-3 py-1 text-xs font-medium text-primary-foreground transition-colors"
+                          : "rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-primary/40 hover:text-foreground"
+                      }
                     >
-                      <X className="h-3 w-3" />
+                      {cat}
                     </button>
-                  </Badge>
-                ))
+                  )
+                })}
+              </div>
+              {!STANDARD_CATEGORIES.some((c) => c.toLowerCase() === category.toLowerCase()) && category && (
+                <p className="text-xs text-muted-foreground">
+                  Current: <span className="font-medium text-foreground">{category}</span> (custom)
+                </p>
               )}
             </div>
 
-            {/* Add new tag */}
-            <div className="flex gap-2 pt-1">
-              <Input
-                value={newSubCategory}
-                onChange={(e) => setNewSubCategory(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    addSubCategory(newSubCategory)
-                  }
-                }}
-                placeholder="Add a subcategory…"
-                disabled={loading}
-                className="h-9"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => addSubCategory(newSubCategory)}
-                disabled={loading || !newSubCategory.trim()}
-                className="h-9 gap-1.5"
-              >
-                <Plus className="h-4 w-4" />
-                Add
-              </Button>
-            </div>
+            {/* Subcategories — denser management tool */}
+            <div className="space-y-1.5 border-t border-slate-200 pt-3">
+              <Label className="text-sm">Subcategories</Label>
+              <p className="text-xs text-muted-foreground">
+                Assign one or more subcategories so this resource can appear under multiple groupings.
+              </p>
 
-            {/* Suggestions from existing taxonomy */}
-            {suggestions.filter((s) => !subCategories.some((c) => c.toLowerCase() === s.toLowerCase())).length >
-              0 && (
-              <div className="pt-1">
-                <p className="text-xs font-medium text-muted-foreground">Existing subcategories</p>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {suggestions
-                    .filter((s) => !subCategories.some((c) => c.toLowerCase() === s.toLowerCase()))
-                    .slice(0, 12)
-                    .map((s) => (
+              {/* Current tags (compact) */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {subCategories.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">No subcategories assigned yet.</span>
+                ) : (
+                  subCategories.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1 rounded-full bg-slate-200 py-0.5 pl-2.5 pr-1 text-xs font-medium text-slate-700"
+                    >
+                      {tag}
+                      <button
+                        type="button"
+                        onClick={() => removeSubCategory(tag)}
+                        disabled={loading}
+                        aria-label={`Remove ${tag}`}
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-slate-300"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+
+              {/* Add new tag */}
+              <div className="flex gap-2 pt-1.5">
+                <Input
+                  value={newSubCategory}
+                  onChange={(e) => setNewSubCategory(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      addSubCategory(newSubCategory)
+                    }
+                  }}
+                  placeholder="Add a subcategory…"
+                  disabled={loading}
+                  className="h-8 text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addSubCategory(newSubCategory)}
+                  disabled={loading || !newSubCategory.trim()}
+                  className="h-8 gap-1 px-2.5"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add
+                </Button>
+              </div>
+
+              {/* Suggestions from existing taxonomy */}
+              {unusedSuggestions.length > 0 && (
+                <div className="pt-1.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Existing subcategories
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {unusedSuggestions.slice(0, 16).map((s) => (
                       <button
                         key={s}
                         type="button"
                         onClick={() => addSubCategory(s)}
                         disabled={loading}
-                        className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                        className="inline-flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 transition-colors hover:border-primary/40 hover:text-foreground"
                       >
-                        <Plus className="h-3 w-3" />
+                        <Plus className="h-2.5 w-2.5" />
                         {s}
                       </button>
                     ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* Address */}
-          <div className="space-y-2">
-            <Label htmlFor="address">Address</Label>
-            <Input
-              id="address"
-              name="address"
-              placeholder="123 Main St, Chico, CA 95926"
-              value={formData.address}
-              onChange={handleChange}
-              disabled={loading}
-            />
-            {!formData.address && (
-              <p className="text-xs text-amber-600">Missing: This service has no address on file</p>
-            )}
-          </div>
+          {/* ---------- CONTACT FIELDS (two-column grid) ---------- */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* Address */}
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="address">Address</Label>
+              <Input
+                id="address"
+                name="address"
+                placeholder="123 Main St, Chico, CA 95926"
+                value={formData.address}
+                onChange={handleChange}
+                disabled={loading}
+              />
+              {!formData.address && (
+                <p className="text-xs text-amber-600">Missing: This service has no address on file</p>
+              )}
+            </div>
 
-          {/* Phone */}
-          <div className="space-y-2">
-            <Label htmlFor="phone_number">Phone Number</Label>
-            <Input
-              id="phone_number"
-              name="phone_number"
-              placeholder="(530) 555-0123"
-              value={formData.phone_number}
-              onChange={handleChange}
-              disabled={loading}
-            />
-            {!formData.phone_number && (
-              <p className="text-xs text-amber-600">Missing: This service has no phone number on file</p>
-            )}
-          </div>
+            {/* Phone */}
+            <div className="space-y-2">
+              <Label htmlFor="phone_number">Phone Number</Label>
+              <Input
+                id="phone_number"
+                name="phone_number"
+                placeholder="(530) 555-0123"
+                value={formData.phone_number}
+                onChange={handleChange}
+                disabled={loading}
+              />
+              {!formData.phone_number && (
+                <p className="text-xs text-amber-600">Missing: No phone number on file</p>
+              )}
+            </div>
 
-          {/* Website */}
-          <div className="space-y-2">
-            <Label htmlFor="website">Website</Label>
-            <Input
-              id="website"
-              name="website"
-              placeholder="https://example.org"
-              value={formData.website}
-              onChange={handleChange}
-              disabled={loading}
-            />
-            {!formData.website && (
-              <p className="text-xs text-amber-600">Missing: This service has no website on file</p>
-            )}
-          </div>
+            {/* Website */}
+            <div className="space-y-2">
+              <Label htmlFor="website">Website</Label>
+              <Input
+                id="website"
+                name="website"
+                placeholder="https://example.org"
+                value={formData.website}
+                onChange={handleChange}
+                disabled={loading}
+              />
+              {!formData.website && (
+                <p className="text-xs text-amber-600">Missing: No website on file</p>
+              )}
+            </div>
 
-          {/* Hours */}
-          <div className="space-y-2">
-            <Label htmlFor="hours">Hours of Operation</Label>
-            <Input
-              id="hours"
-              name="hours"
-              placeholder="Mon–Fri 9am–5pm"
-              value={formData.hours}
-              onChange={handleChange}
-              disabled={loading}
-            />
-            {!formData.hours && (
-              <p className="text-xs text-amber-600">Missing: This service has no hours on file</p>
-            )}
-          </div>
+            {/* Hours */}
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="hours">Hours of Operation</Label>
+              <Input
+                id="hours"
+                name="hours"
+                placeholder="Mon–Fri 9am–5pm"
+                value={formData.hours}
+                onChange={handleChange}
+                disabled={loading}
+              />
+              {!formData.hours && (
+                <p className="text-xs text-amber-600">Missing: No hours on file</p>
+              )}
+            </div>
 
-          {/* Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Additional Notes</Label>
-            <Textarea
-              id="notes"
-              name="notes"
-              placeholder="Any additional details about this service…"
-              value={formData.notes}
-              onChange={handleChange}
-              disabled={loading}
-              rows={3}
-            />
-          </div>
+            {/* Other Contact */}
+            <div className="space-y-2">
+              <Label htmlFor="other_contact_info">Other Contact Information</Label>
+              <Textarea
+                id="other_contact_info"
+                name="other_contact_info"
+                placeholder="Alternative phone, email, or other ways to reach this service…"
+                value={formData.other_contact_info}
+                onChange={handleChange}
+                disabled={loading}
+                rows={2}
+              />
+            </div>
 
-          {/* Other Contact */}
-          <div className="space-y-2">
-            <Label htmlFor="other_contact_info">Other Contact Information</Label>
-            <Textarea
-              id="other_contact_info"
-              name="other_contact_info"
-              placeholder="Alternative phone, email, or other ways to reach this service…"
-              value={formData.other_contact_info}
-              onChange={handleChange}
-              disabled={loading}
-              rows={2}
-            />
+            {/* Backdoor Contact */}
+            <div className="space-y-2">
+              <Label htmlFor="back_door_contacts">Backdoor Contact</Label>
+              <Textarea
+                id="back_door_contacts"
+                name="back_door_contacts"
+                placeholder="Direct staff email, extension, or internal contact…"
+                value={formData.back_door_contacts}
+                onChange={handleChange}
+                disabled={loading}
+                rows={2}
+              />
+              <p className="text-xs text-muted-foreground">Private direct line for staff use.</p>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="notes">Additional Notes</Label>
+              <Textarea
+                id="notes"
+                name="notes"
+                placeholder="Any additional details about this service…"
+                value={formData.notes}
+                onChange={handleChange}
+                disabled={loading}
+                rows={3}
+              />
+            </div>
           </div>
 
           {/* Error Message */}

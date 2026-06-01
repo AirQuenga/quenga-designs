@@ -9,6 +9,7 @@ export interface UpdateCommunityServiceInput {
   hours?: string | null
   notes?: string | null
   other_contact_info?: string | null
+  back_door_contacts?: string | null
   category?: string | null
   sub_category?: string | null
   /** Full replacement of the multi-subcategory tag list. */

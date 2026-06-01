@@ -11,15 +11,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRight, ArrowLeft, Edit2, ArrowDownUp } from "lucide-react"
+import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRight, ArrowLeft, Edit2, ArrowDownUp, LayoutGrid, Tags } from "lucide-react"
 import { ServiceEditDialog } from "./service-edit-dialog"
+import { FilterButton } from "./filter-button"
 
 const PAGE_SIZE = 25
 const SEARCH_DEBOUNCE_MS = 300
@@ -276,77 +270,44 @@ export function CommunityServicesDirectory() {
             </span>
           </div>
 
-          {/* Sort + filter controls */}
-          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-sm sm:flex-row sm:items-end sm:gap-4">
-            <div className="flex flex-1 flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Sort by</label>
-              <Select value={allSort} onValueChange={setAllSort}>
-                <SelectTrigger className="h-9">
-                  <ArrowDownUp className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SORT_OPTIONS.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-1 flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Category</label>
-              <Select value={allCategory} onValueChange={setAllCategory}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="All categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_FILTER}>All categories</SelectItem>
-                  {CATEGORIES.map((c) => (
-                    <SelectItem key={c.match} value={c.match}>
-                      {c.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex flex-1 flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Subcategory</label>
-              <Select
-                value={allSubCategory}
-                onValueChange={setAllSubCategory}
-                disabled={subcategoryOptions.length === 0}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="All subcategories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_FILTER}>All subcategories</SelectItem>
-                  {subcategoryOptions.map((sc) => (
-                    <SelectItem key={sc} value={sc}>
-                      {sc}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Filter-button row: clean horizontal pills with pop-out dropdowns */}
+          <div className="mb-4 -mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+            <FilterButton
+              icon={<ArrowDownUp className="h-3.5 w-3.5" aria-hidden="true" />}
+              label="Sort"
+              value={allSort === "name-asc" ? null : allSort}
+              options={SORT_OPTIONS.map((s) => ({ value: s.value, label: s.label }))}
+              onChange={(v) => setAllSort(v ?? "name-asc")}
+            />
+            <FilterButton
+              icon={<LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />}
+              label="Category"
+              value={allCategory === ALL_FILTER ? null : allCategory}
+              options={CATEGORIES.map((c) => ({ value: c.match, label: c.label }))}
+              onChange={(v) => setAllCategory(v ?? ALL_FILTER)}
+            />
+            <FilterButton
+              icon={<Tags className="h-3.5 w-3.5" aria-hidden="true" />}
+              label="Subcategory"
+              value={allSubCategory === ALL_FILTER ? null : allSubCategory}
+              options={subcategoryOptions.map((sc) => ({ value: sc, label: sc }))}
+              onChange={(v) => setAllSubCategory(v ?? ALL_FILTER)}
+              disabled={subcategoryOptions.length === 0}
+            />
 
             {(allCategory !== ALL_FILTER || allSubCategory !== ALL_FILTER || allSort !== "name-asc") && (
-              <Button
-                variant="ghost"
-                size="sm"
+              <button
+                type="button"
                 onClick={() => {
                   setAllSort("name-asc")
                   setAllCategory(ALL_FILTER)
                   setAllSubCategory(ALL_FILTER)
                 }}
-                className="h-9 gap-1.5 text-muted-foreground hover:text-foreground"
+                className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 <X className="h-3.5 w-3.5" />
-                Reset
-              </Button>
+                Clear all
+              </button>
             )}
           </div>
 
