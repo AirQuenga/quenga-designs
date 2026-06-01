@@ -441,3 +441,87 @@ export async function approveFixWithEdit(
 
   return { success: true, message: `Applied edited value: ${fix.field} = "${editedValue}"` }
 }
+
+/* ============================================================
+ *  UNIFIED REPAIR CONSOLE SUPPORT (per-record, multi-field)
+ *  Mirrors applyResourceRepair / bulkApplyResourceRepairs so the
+ *  Property Data Hub can use the same <UnifiedRepairConsole/>.
+ * ============================================================ */
+
+export type PropertyFieldName =
+  | "address"
+  | "city"
+  | "state"
+  | "zip_code"
+  | "apn"
+  | "bedrooms"
+  | "bathrooms"
+  | "square_feet"
+  | "current_rent"
+  | "availability_date"
+  | "management_company"
+  | "notes"
+  | "property_name"
+
+const NUMERIC_PROPERTY_FIELDS: PropertyFieldName[] = [
+  "bedrooms",
+  "bathrooms",
+  "square_feet",
+  "current_rent",
+]
+
+/**
+ * Apply one or more edited/added field values to a single property.
+ * Numeric fields are coerced; empty strings are skipped (treated as "leave as-is").
+ */
+export async function applyPropertyRepair(
+  propertyId: string,
+  values: Partial<Record<PropertyFieldName, string>>,
+): Promise<{ success: boolean; message: string }> {
+  const supabase = await createClient()
+
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  for (const [key, raw] of Object.entries(values) as [PropertyFieldName, string | undefined][]) {
+    if (raw == null || String(raw).trim() === "") continue
+    if (NUMERIC_PROPERTY_FIELDS.includes(key)) {
+      const n = Number(String(raw).replace(/[^0-9.\-]/g, ""))
+      patch[key] = Number.isFinite(n) ? n : null
+    } else if (key === "zip_code") {
+      patch[key] = String(raw).trim().slice(0, 10)
+    } else {
+      patch[key] = String(raw).trim()
+    }
+  }
+
+  const fieldKeys = Object.keys(patch).filter((k) => k !== "updated_at")
+  if (fieldKeys.length === 0) {
+    return { success: false, message: "No values to update" }
+  }
+
+  const { error } = await supabase.from("properties").update(patch).eq("id", propertyId)
+  if (error) return { success: false, message: error.message }
+  return { success: true, message: `Updated ${fieldKeys.join(", ")}` }
+}
+
+export interface BulkPropertyRepairItem {
+  propertyId: string
+  values: Partial<Record<PropertyFieldName, string>>
+}
+
+export interface BulkPropertyRepairResult {
+  succeeded: string[]
+  failed: { propertyId: string; message: string }[]
+}
+
+export async function bulkApplyPropertyRepairs(
+  items: BulkPropertyRepairItem[],
+): Promise<BulkPropertyRepairResult> {
+  const succeeded: string[] = []
+  const failed: BulkPropertyRepairResult["failed"] = []
+  for (const item of items) {
+    const result = await applyPropertyRepair(item.propertyId, item.values)
+    if (result.success) succeeded.push(item.propertyId)
+    else failed.push({ propertyId: item.propertyId, message: result.message })
+  }
+  return { succeeded, failed }
+}
