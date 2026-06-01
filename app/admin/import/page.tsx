@@ -263,9 +263,6 @@ export default function PropertyDataHubPage() {
         if (res.pendingFixes.length > 0) {
           allFixes.push(...res.pendingFixes)
           setAuditFixed((p) => p + res.pendingFixes.length)
-          for (const fix of res.pendingFixes) {
-            appendLog("AUDIT", "INFO", `[STAGED] ${fix.address}: ${fix.field} → "${fix.proposedValue}" (${fix.confidence})`)
-          }
         }
         
         // Log errors
