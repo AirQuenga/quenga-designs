@@ -8,9 +8,6 @@
  * Only when the user clicks "Approve" do we execute the actual write.
  */
 
-import { generateText, Output } from "ai"
-import { openai } from "@ai-sdk/openai"
-import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 import type { AuditLogLine } from "./audit-db"
 
@@ -92,58 +89,6 @@ function fixPaddedHouseNumber(input: string): { value: string; changed: boolean;
     return { value: `${trimmed}${tail}`, changed: true, note: `padded-zero (${numStr} -> ${trimmed})` }
   }
   return { value: input, changed: false }
-}
-
-/* ============================================================
- *  PASS B — Web Search Schema
- * ============================================================ */
-
-const numLike = z
-  .union([z.number(), z.string(), z.null()])
-  .transform((v) => {
-    if (v === null || v === "") return null
-    const n = typeof v === "number" ? v : Number(String(v).replace(/[^0-9.\-]/g, ""))
-    return Number.isFinite(n) ? n : null
-  })
-  .nullable()
-
-const strLike = z
-  .union([z.string(), z.number(), z.null()])
-  .transform((v) => (v === null || v === "" ? null : String(v)))
-  .nullable()
-
-const ExtractedSchema = z.object({
-  address: strLike,
-  city: strLike,
-  state: strLike,
-  zip: strLike,
-  apn: strLike,
-  bedrooms: numLike,
-  bathrooms: numLike,
-  square_feet: numLike,
-  rent: numLike,
-  available_date: strLike,
-  management_company: strLike,
-  notes: strLike,
-  source_url: strLike,
-  confidence: z.enum(["high", "medium", "low", "none"]).catch("none"),
-})
-
-type Extracted = z.infer<typeof ExtractedSchema>
-
-async function webSearchOnce(prompt: string): Promise<Extracted | null> {
-  try {
-    const { experimental_output } = await generateText({
-      model: openai.responses("gpt-4o-mini"),
-      tools: { web_search_preview: openai.tools.webSearchPreview({ searchContextSize: "low" }) },
-      experimental_output: Output.object({ schema: ExtractedSchema }),
-      stopWhen: ({ steps }: { steps: unknown[] }) => steps.length >= 3,
-      prompt,
-    })
-    return experimental_output as Extracted
-  } catch {
-    return null
-  }
 }
 
 /* ============================================================
@@ -248,91 +193,39 @@ export async function auditStagingBatch(offset = 0, batchSize = 25): Promise<Sta
         })
       }
 
-      // PASS B: Web search for missing critical fields
-      const hasMissingFields =
-        !row.current_rent ||
-        !row.bedrooms ||
-        !row.bathrooms ||
-        !row.square_feet ||
-        !row.zip_code
+      // PASS B: Flag every missing critical field as a warning (like the
+      // Resource Hub). Web search is used only to PRE-FILL a suggested value;
+      // when it finds nothing, the field still surfaces as a manual-entry warning.
+      const missingFieldDefs: { field: string; missing: boolean }[] = [
+        { field: "current_rent", missing: !row.current_rent },
+        { field: "bedrooms", missing: !row.bedrooms },
+        { field: "bathrooms", missing: !row.bathrooms },
+        { field: "square_feet", missing: !row.square_feet },
+        { field: "zip_code", missing: !row.zip_code },
+      ]
+      const missingFields = missingFieldDefs.filter((d) => d.missing).map((d) => d.field)
 
-      if (hasMissingFields && row.address) {
-        const query = [row.address, row.city, row.state ?? "CA", row.zip_code].filter(Boolean).join(", ")
-        const extracted = await webSearchOnce(
-          `You are auditing a rental property. Use web_search_preview to find: ${query}. Return rent, bedrooms, bathrooms, square_feet, zip. Set confidence to "none" if not found.`,
-        )
-
-        if (extracted && extracted.confidence !== "none") {
-          const conf = extracted.confidence as "high" | "medium" | "low"
-
-          if (!row.current_rent && extracted.rent) {
-            pendingFixes.push({
-              id: `fix-${++fixCounter}`,
-              propertyId: row.id,
-              field: "current_rent",
-              originalValue: row.current_rent,
-              proposedValue: extracted.rent,
-              confidence: conf,
-              source: "web-search",
-              address: label,
-            })
-          }
-          if (!row.bedrooms && extracted.bedrooms) {
-            pendingFixes.push({
-              id: `fix-${++fixCounter}`,
-              propertyId: row.id,
-              field: "bedrooms",
-              originalValue: row.bedrooms,
-              proposedValue: extracted.bedrooms,
-              confidence: conf,
-              source: "web-search",
-              address: label,
-            })
-          }
-          if (!row.bathrooms && extracted.bathrooms) {
-            pendingFixes.push({
-              id: `fix-${++fixCounter}`,
-              propertyId: row.id,
-              field: "bathrooms",
-              originalValue: row.bathrooms,
-              proposedValue: extracted.bathrooms,
-              confidence: conf,
-              source: "web-search",
-              address: label,
-            })
-          }
-          if (!row.square_feet && extracted.square_feet) {
-            pendingFixes.push({
-              id: `fix-${++fixCounter}`,
-              propertyId: row.id,
-              field: "square_feet",
-              originalValue: row.square_feet,
-              proposedValue: extracted.square_feet,
-              confidence: conf,
-              source: "web-search",
-              address: label,
-            })
-          }
-          if (!row.zip_code && extracted.zip) {
-            pendingFixes.push({
-              id: `fix-${++fixCounter}`,
-              propertyId: row.id,
-              field: "zip_code",
-              originalValue: row.zip_code,
-              proposedValue: String(extracted.zip).slice(0, 5),
-              confidence: conf,
-              source: "web-search",
-              address: label,
-            })
-          }
-
-          if (pendingFixes.length > 0) {
-            logs.push({
-              level: "INFO",
-              message: `Web search found data for ${label} (${conf} confidence)`,
-            })
-          }
+      if (missingFields.length > 0) {
+        // Surface each missing field as a warning immediately (no blocking web
+        // search). The user fills/edits values in the repair console, and the
+        // per-field "Search" button there opens an on-demand web lookup.
+        for (const field of missingFields) {
+          pendingFixes.push({
+            id: `fix-${++fixCounter}`,
+            propertyId: row.id,
+            field,
+            originalValue: null,
+            proposedValue: null,
+            confidence: "low",
+            source: "backfill",
+            address: label,
+          })
         }
+
+        logs.push({
+          level: "WARN",
+          message: `${label} needs review (${missingFields.length} field${missingFields.length === 1 ? "" : "s"}): ${missingFields.join(", ")}`,
+        })
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error"
@@ -440,4 +333,88 @@ export async function approveFixWithEdit(
   }
 
   return { success: true, message: `Applied edited value: ${fix.field} = "${editedValue}"` }
+}
+
+/* ============================================================
+ *  UNIFIED REPAIR CONSOLE SUPPORT (per-record, multi-field)
+ *  Mirrors applyResourceRepair / bulkApplyResourceRepairs so the
+ *  Property Data Hub can use the same <UnifiedRepairConsole/>.
+ * ============================================================ */
+
+export type PropertyFieldName =
+  | "address"
+  | "city"
+  | "state"
+  | "zip_code"
+  | "apn"
+  | "bedrooms"
+  | "bathrooms"
+  | "square_feet"
+  | "current_rent"
+  | "availability_date"
+  | "management_company"
+  | "notes"
+  | "property_name"
+
+const NUMERIC_PROPERTY_FIELDS: PropertyFieldName[] = [
+  "bedrooms",
+  "bathrooms",
+  "square_feet",
+  "current_rent",
+]
+
+/**
+ * Apply one or more edited/added field values to a single property.
+ * Numeric fields are coerced; empty strings are skipped (treated as "leave as-is").
+ */
+export async function applyPropertyRepair(
+  propertyId: string,
+  values: Partial<Record<PropertyFieldName, string>>,
+): Promise<{ success: boolean; message: string }> {
+  const supabase = await createClient()
+
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  for (const [key, raw] of Object.entries(values) as [PropertyFieldName, string | undefined][]) {
+    if (raw == null || String(raw).trim() === "") continue
+    if (NUMERIC_PROPERTY_FIELDS.includes(key)) {
+      const n = Number(String(raw).replace(/[^0-9.\-]/g, ""))
+      patch[key] = Number.isFinite(n) ? n : null
+    } else if (key === "zip_code") {
+      patch[key] = String(raw).trim().slice(0, 10)
+    } else {
+      patch[key] = String(raw).trim()
+    }
+  }
+
+  const fieldKeys = Object.keys(patch).filter((k) => k !== "updated_at")
+  if (fieldKeys.length === 0) {
+    return { success: false, message: "No values to update" }
+  }
+
+  const { error } = await supabase.from("properties").update(patch).eq("id", propertyId)
+  if (error) return { success: false, message: error.message }
+  return { success: true, message: `Updated ${fieldKeys.join(", ")}` }
+}
+
+export interface BulkPropertyRepairItem {
+  propertyId: string
+  values: Partial<Record<PropertyFieldName, string>>
+}
+
+export interface BulkPropertyRepairResult {
+  succeeded: string[]
+  failed: { propertyId: string; message: string }[]
+}
+
+export async function bulkApplyPropertyRepairs(
+  items: BulkPropertyRepairItem[],
+): Promise<BulkPropertyRepairResult> {
+  const succeeded: string[] = []
+  const failed: BulkPropertyRepairResult["failed"] = []
+  for (const item of items) {
+    const result = await applyPropertyRepair(item.propertyId, item.values)
+    if (result.success) succeeded.push(item.propertyId)
+    else failed.push({ propertyId: item.propertyId, message: result.message })
+  }
+  return { succeeded, failed }
 }

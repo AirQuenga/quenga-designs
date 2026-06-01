@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useMemo } from "react"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,11 +21,60 @@ import {
   ClipboardPaste,
   Link2,
 } from "lucide-react"
-import { auditStagingBatch, getAuditStagingTotal, approveFix, type PendingFix } from "@/app/actions/audit-staging"
+import {
+  auditStagingBatch,
+  getAuditStagingTotal,
+  applyPropertyRepair,
+  bulkApplyPropertyRepairs,
+  type PendingFix,
+  type PropertyFieldName,
+} from "@/app/actions/audit-staging"
 import { LiveLog, type LogEntry, type LogSource, type LogStatus } from "@/components/admin/live-log"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminHubLayout } from "@/components/admin/admin-hub-layout"
-import { AuditReviewTable } from "@/components/admin/audit-review-table"
+import {
+  UnifiedRepairConsole,
+  type RepairItem,
+} from "@/components/admin/unified-repair-console"
+
+const FIELD_LABELS: Record<PropertyFieldName, string> = {
+  address: "Address",
+  city: "City",
+  state: "State",
+  zip_code: "ZIP Code",
+  apn: "APN",
+  bedrooms: "Bedrooms",
+  bathrooms: "Bathrooms",
+  square_feet: "Square Feet",
+  current_rent: "Rent",
+  availability_date: "Available Date",
+  management_company: "Management Co.",
+  notes: "Notes",
+  property_name: "Property Name",
+}
+
+const FIELD_PLACEHOLDERS: Record<PropertyFieldName, string> = {
+  address: "123 Main St",
+  city: "Chico",
+  state: "CA",
+  zip_code: "95926",
+  apn: "000-000-000",
+  bedrooms: "3",
+  bathrooms: "2",
+  square_feet: "1450",
+  current_rent: "2200",
+  availability_date: "2026-07-01",
+  management_company: "Acme Property Mgmt",
+  notes: "Additional details…",
+  property_name: "Maple Court Apartments",
+}
+
+/** Short reason chip derived from the staged fix's source + confidence. */
+function fixReason(fix: PendingFix): string {
+  if (fix.source === "backfill") return "MISSING"
+  if (fix.source === "typo-repair") return "TYPO"
+  return `WEB · ${fix.confidence.toUpperCase()}`
+}
 
 type ScrapedListing = {
   source_url: string
@@ -72,7 +121,6 @@ export default function PropertyDataHubPage() {
   const [auditFailed, setAuditFailed] = useState(0)
   const [auditRunning, setAuditRunning] = useState(false)
   const [pendingFixes, setPendingFixes] = useState<PendingFix[]>([])
-  const [isApproving, setIsApproving] = useState(false)
   const stopAuditRef = useRef(false)
   const stopImportRef = useRef(false)
 
@@ -201,7 +249,7 @@ export default function PropertyDataHubPage() {
       appendLog("AUDIT", "INFO", `Starting Staging Audit of ${total.toLocaleString()} records (batch size 25, NO direct writes)`)
       
       let offset = 0
-      const allFixes: PendingFix[] = []
+      let totalStaged = 0
       
       while (true) {
         if (stopAuditRef.current) {
@@ -211,13 +259,17 @@ export default function PropertyDataHubPage() {
         const res = await auditStagingBatch(offset, 25)
         setAuditScanned((p) => p + res.scanned)
         
-        // Collect pending fixes
+        // Stream pending fixes into the console as each batch completes so they
+        // can be reviewed and edited live, while the audit keeps running.
         if (res.pendingFixes.length > 0) {
-          allFixes.push(...res.pendingFixes)
+          totalStaged += res.pendingFixes.length
           setAuditFixed((p) => p + res.pendingFixes.length)
-          for (const fix of res.pendingFixes) {
-            appendLog("AUDIT", "INFO", `[STAGED] ${fix.address}: ${fix.field} → "${fix.proposedValue}" (${fix.confidence})`)
-          }
+          setPendingFixes((prev) => {
+            // Skip any fixes for properties the user already cleared mid-run.
+            const seen = new Set(prev.map((f) => f.id))
+            const additions = res.pendingFixes.filter((f) => !seen.has(f.id))
+            return additions.length > 0 ? [...prev, ...additions] : prev
+          })
         }
         
         // Log errors
@@ -231,13 +283,11 @@ export default function PropertyDataHubPage() {
         }
         
         if (res.nextOffset === null) {
-          appendLog("AUDIT", "SUCCESS", `Scan complete — ${allFixes.length} pending fixes awaiting review`)
+          appendLog("AUDIT", "SUCCESS", `Scan complete — ${totalStaged} pending fixes awaiting review`)
           break
         }
         offset = res.nextOffset
       }
-      
-      setPendingFixes(allFixes)
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error"
       appendLog("AUDIT", "ERROR", `Audit halted: ${msg}`)
@@ -256,54 +306,42 @@ export default function PropertyDataHubPage() {
     setPendingFixes([])
   }
 
-  const handleApproveFix = async (fix: PendingFix) => {
-    const result = await approveFix(fix)
-    if (result.success) {
-      appendLog("AUDIT", "FIXED", `Applied: ${fix.address} → ${fix.field} = "${fix.proposedValue}"`)
-      setPendingFixes((prev) => prev.filter((f) => f.id !== fix.id))
-    } else {
-      appendLog("AUDIT", "ERROR", `Failed to apply fix: ${result.message}`)
-    }
-  }
-
-  const handleApproveWithEdit = async (fix: PendingFix, editedValue: string | number) => {
-    // Create a modified fix with the edited value
-    const editedFix = { ...fix, proposedValue: editedValue }
-    const result = await approveFix(editedFix)
-    if (result.success) {
-      appendLog("AUDIT", "FIXED", `Applied (edited): ${fix.address} → ${fix.field} = "${editedValue}"`)
-      setPendingFixes((prev) => prev.filter((f) => f.id !== fix.id))
-    } else {
-      appendLog("AUDIT", "ERROR", `Failed to apply fix: ${result.message}`)
-    }
-  }
-
-  const handleDenyFix = (fix: PendingFix) => {
-    appendLog("AUDIT", "WARN", `Denied: ${fix.address} → ${fix.field}`)
-    setPendingFixes((prev) => prev.filter((f) => f.id !== fix.id))
-  }
-
-  const handleApproveAll = async () => {
-    setIsApproving(true)
-    appendLog("AUDIT", "INFO", `Approving all ${pendingFixes.length} pending fixes…`)
-    
-    let approved = 0
-    let failed = 0
-    
+  /* ---------- Group staged fixes by property for the repair console ---------- */
+  const repairItems = useMemo<RepairItem<PropertyFieldName>[]>(() => {
+    const byProperty = new Map<string, PendingFix[]>()
     for (const fix of pendingFixes) {
-      const result = await approveFix(fix)
-      if (result.success) {
-        approved++
-      } else {
-        failed++
-        appendLog("AUDIT", "ERROR", `Failed: ${fix.address} → ${fix.field}: ${result.message}`)
-      }
+      const existing = byProperty.get(fix.propertyId) ?? []
+      existing.push(fix)
+      byProperty.set(fix.propertyId, existing)
     }
-    
-    appendLog("AUDIT", "SUCCESS", `Approved ${approved} fixes${failed > 0 ? `, ${failed} failed` : ""}`)
-    setPendingFixes([])
-    setIsApproving(false)
-  }
+
+    return Array.from(byProperty.entries()).map(([propertyId, fixes]) => {
+      // One descriptor per distinct field (keep the first fix for a given field)
+      const seen = new Set<string>()
+      const fields = fixes
+        .filter((f) => {
+          if (seen.has(f.field)) return false
+          seen.add(f.field)
+          return true
+        })
+        .map((f) => ({
+          field: f.field as PropertyFieldName,
+          label: FIELD_LABELS[f.field as PropertyFieldName] ?? f.field,
+          placeholder: FIELD_PLACEHOLDERS[f.field as PropertyFieldName],
+          reason: fixReason(f),
+          currentValue: f.originalValue != null ? String(f.originalValue) : null,
+          prefilled: f.proposedValue != null ? String(f.proposedValue) : null,
+        }))
+
+      return {
+        id: propertyId,
+        title: fixes[0].address,
+        subtitle: `${fields.length} field${fields.length === 1 ? "" : "s"} to review`,
+        fields,
+        initialStatus: "WARN" as const,
+      }
+    })
+  }, [pendingFixes])
 
   const auditPct = auditTotal && auditTotal > 0 ? Math.min(100, Math.round((auditScanned / auditTotal) * 100)) : 0
 
@@ -635,18 +673,53 @@ export default function PropertyDataHubPage() {
       importCard={importCard}
       auditCard={auditCard}
       scrapeCard={scrapeCard}
-      log={<LiveLog entries={logs} onClear={clearLogs} height={280} />}
+      log={
+        <LiveLog
+          entries={logs}
+          onClear={clearLogs}
+          height={280}
+          pendingRepairsCount={repairItems.length}
+          onJumpToRepairs={() => {
+            const el = document.getElementById("repair-console")
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+          }}
+        />
+      }
     >
-      {/* Pending Fixes Review Table */}
-      {pendingFixes.length > 0 && (
-        <div className="mt-6">
-          <AuditReviewTable
-            fixes={pendingFixes}
-            onApprove={handleApproveFix}
-            onApproveWithEdit={handleApproveWithEdit}
-            onDeny={handleDenyFix}
-            onApproveAll={handleApproveAll}
-            isApproving={isApproving}
+      {/* Active Repair Console — same experience as the Resource Data Hub */}
+      {repairItems.length > 0 && (
+        <div id="repair-console" className="mt-6 sm:mt-8">
+          <UnifiedRepairConsole<PropertyFieldName>
+            title="Active Repair Console"
+            description={`${repairItems.length} propert${repairItems.length === 1 ? "y" : "ies"} need attention. Pre-filled values are auto-suggested from typo repair and web search.`}
+            items={repairItems}
+            onSave={async (id, values) => {
+              const res = await applyPropertyRepair(id, values)
+              if (res.success) {
+                setPendingFixes((prev) => prev.filter((f) => f.propertyId !== id))
+              }
+              return res
+            }}
+            onBulkSave={async (payload) => {
+              const res = await bulkApplyPropertyRepairs(
+                payload.map((p) => ({ propertyId: p.id, values: p.values })),
+              )
+              if (res.succeeded.length > 0) {
+                const done = new Set(res.succeeded)
+                setPendingFixes((prev) => prev.filter((f) => !done.has(f.propertyId)))
+              }
+              return {
+                succeeded: res.succeeded,
+                failed: res.failed.map((f) => ({ id: f.propertyId, message: f.message })),
+              }
+            }}
+            buildFieldSearchUrl={(item, field) => {
+              const q = `${item.title} ${FIELD_LABELS[field]} Butte County California`
+                .replace(/\s+/g, " ")
+                .trim()
+              return `https://duckduckgo.com/?q=${encodeURIComponent(q)}`
+            }}
+            onLog={(level, message) => appendLog("AUDIT", level, message)}
           />
         </div>
       )}
