@@ -47,6 +47,13 @@ export function CommunityServicesDirectory() {
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
 
+  // "Browse all" list shown on the landing page (under the category grid)
+  const [allServices, setAllServices] = useState<CommunityService[]>([])
+  const [allLoading, setAllLoading] = useState(false)
+  const [allPage, setAllPage] = useState(1)
+  const [allTotal, setAllTotal] = useState(0)
+  const [allTotalPages, setAllTotalPages] = useState(0)
+
   // Two-tier search: input value (immediate) + committed query (debounced)
   const [searchInput, setSearchInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
@@ -93,6 +100,23 @@ export function CommunityServicesDirectory() {
       cancelled = true
     }
   }, [isBrowsing, activeCategory, searchQuery, page])
+
+  // Fetch the full directory for the landing "All resources" list
+  useEffect(() => {
+    if (isBrowsing) return
+    let cancelled = false
+    setAllLoading(true)
+    getCommunityServices({}, allPage, PAGE_SIZE).then((res) => {
+      if (cancelled) return
+      setAllServices(res.services)
+      setAllTotal(res.total)
+      setAllTotalPages(res.totalPages)
+      setAllLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isBrowsing, allPage])
 
   const clearAll = () => {
     setSearchInput("")
@@ -173,6 +197,68 @@ export function CommunityServicesDirectory() {
               </button>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* ---------------- ALL RESOURCES (landing list under categories) ---------------- */}
+      {!isBrowsing && (
+        <section>
+          <div className="mb-4 flex items-baseline justify-between">
+            <h3 className="text-lg font-semibold text-foreground sm:text-xl">All resources</h3>
+            <span className="text-xs text-muted-foreground">
+              {allTotal.toLocaleString()} {allTotal === 1 ? "resource" : "resources"}
+            </span>
+          </div>
+
+          {allLoading && allServices.length === 0 ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-32 animate-pulse rounded-xl border border-border bg-card shadow-sm"
+                />
+              ))}
+            </div>
+          ) : allServices.length === 0 ? (
+            <div className="rounded-xl border border-border bg-card p-12 text-center shadow-sm">
+              <p className="text-sm text-muted-foreground">No resources available yet.</p>
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {allServices.map((s) => (
+                <ServiceCard key={s.id} service={s} />
+              ))}
+            </ul>
+          )}
+
+          {/* Pagination */}
+          {allTotalPages > 1 && (
+            <div className="mt-6 flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+              <span className="text-xs text-muted-foreground">
+                Page {allPage} of {allTotalPages}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAllPage(Math.max(1, allPage - 1))}
+                  disabled={allPage === 1 || allLoading}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAllPage(Math.min(allTotalPages, allPage + 1))}
+                  disabled={allPage === allTotalPages || allLoading}
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
