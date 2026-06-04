@@ -11,9 +11,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRight, ArrowLeft, Edit2, ArrowDownUp, LayoutGrid, Tags } from "lucide-react"
+import { Loader2, Search, X, MapPin, Phone, Clock, Globe, ChevronLeft, ChevronRight, ArrowLeft, Edit2, ArrowDownUp, LayoutGrid, Tags, Download } from "lucide-react"
 import { ServiceEditDialog } from "./service-edit-dialog"
 import { FilterButton } from "./filter-button"
+import { exportServicesToExcel } from "@/lib/export-services"
 
 const PAGE_SIZE = 25
 const SEARCH_DEBOUNCE_MS = 300
@@ -76,8 +77,8 @@ export function CommunityServicesDirectory() {
 
   // Sorting + filtering controls for the All Resources list
   const [allSort, setAllSort] = useState<string>("name-asc")
-  const [allCategory, setAllCategory] = useState<string>(ALL_FILTER)
-  const [allSubCategory, setAllSubCategory] = useState<string>(ALL_FILTER)
+  const [allCategories, setAllCategories] = useState<string[]>([])
+  const [allSubCategories, setAllSubCategories] = useState<string[]>([])
   const [subcategoryOptions, setSubcategoryOptions] = useState<string[]>([])
 
   // Two-tier search: input value (immediate) + committed query (debounced)
@@ -130,20 +131,21 @@ export function CommunityServicesDirectory() {
     }
   }, [isBrowsing, activeCategory, searchQuery, page, refreshKey])
 
-  // Keep the subcategory filter options in sync with the chosen main category.
+  // Keep the subcategory filter options in sync with the chosen main categories.
   useEffect(() => {
     let cancelled = false
-    const cat = allCategory === ALL_FILTER ? undefined : allCategory
+    // When multiple categories selected, merge subcategories from all
+    const cat = allCategories.length === 1 ? allCategories[0] : undefined
     getCommunityServiceSubcategories(cat).then((opts) => {
       if (cancelled) return
       setSubcategoryOptions(opts)
-      // Drop a stale subcategory selection that no longer applies.
-      setAllSubCategory((prev) => (prev !== ALL_FILTER && !opts.includes(prev) ? ALL_FILTER : prev))
+      // Drop stale subcategory selections that no longer apply.
+      setAllSubCategories((prev) => prev.filter((sc) => opts.includes(sc)))
     })
     return () => {
       cancelled = true
     }
-  }, [allCategory])
+  }, [allCategories])
 
   // Fetch the full directory for the landing "All resources" list,
   // honoring the sort + filter controls above it.
@@ -154,8 +156,8 @@ export function CommunityServicesDirectory() {
     const sort = SORT_OPTIONS.find((s) => s.value === allSort) ?? SORT_OPTIONS[2]
     getCommunityServices(
       {
-        category: allCategory === ALL_FILTER ? undefined : allCategory,
-        subCategory: allSubCategory === ALL_FILTER ? undefined : allSubCategory,
+        category: allCategories.length > 0 ? allCategories[0] : undefined,
+        subCategory: allSubCategories.length > 0 ? allSubCategories[0] : undefined,
         sortField: sort.sortField,
         sortDir: sort.sortDir,
       },
@@ -163,20 +165,36 @@ export function CommunityServicesDirectory() {
       PAGE_SIZE,
     ).then((res) => {
       if (cancelled) return
-      setAllServices(res.services)
-      setAllTotal(res.total)
-      setAllTotalPages(res.totalPages)
+      // Client-side filter for multi-select (server supports single for now)
+      let filtered = res.services
+      if (allCategories.length > 1) {
+        filtered = filtered.filter((s) =>
+          allCategories.some((c) => s.category?.toLowerCase().includes(c.toLowerCase()))
+        )
+      }
+      if (allSubCategories.length > 1) {
+        filtered = filtered.filter((s) =>
+          allSubCategories.some(
+            (sc) =>
+              s.sub_category?.toLowerCase().includes(sc.toLowerCase()) ||
+              s.sub_categories?.some((x) => x.toLowerCase().includes(sc.toLowerCase()))
+          )
+        )
+      }
+      setAllServices(filtered)
+      setAllTotal(allCategories.length > 1 || allSubCategories.length > 1 ? filtered.length : res.total)
+      setAllTotalPages(allCategories.length > 1 || allSubCategories.length > 1 ? 1 : res.totalPages)
       setAllLoading(false)
     })
     return () => {
       cancelled = true
     }
-  }, [isBrowsing, allPage, allSort, allCategory, allSubCategory, refreshKey])
+  }, [isBrowsing, allPage, allSort, allCategories, allSubCategories, refreshKey])
 
   // Reset to page 1 whenever the All Resources sort/filters change.
   useEffect(() => {
     setAllPage(1)
-  }, [allSort, allCategory, allSubCategory])
+  }, [allSort, allCategories, allSubCategories])
 
   const clearAll = () => {
     setSearchInput("")
@@ -271,37 +289,52 @@ export function CommunityServicesDirectory() {
           </div>
 
           {/* Filter-button row: clean horizontal pills with pop-out dropdowns */}
-          <div className="mb-4 -mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
             <FilterButton
               icon={<ArrowDownUp className="h-3.5 w-3.5" aria-hidden="true" />}
               label="Sort"
-              value={allSort === "name-asc" ? null : allSort}
+              value={allSort === "name-asc" ? [] : [allSort]}
               options={SORT_OPTIONS.map((s) => ({ value: s.value, label: s.label }))}
-              onChange={(v) => setAllSort(v ?? "name-asc")}
+              onChange={(v) => setAllSort(v[0] ?? "name-asc")}
+              multiSelect={false}
             />
             <FilterButton
               icon={<LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />}
               label="Category"
-              value={allCategory === ALL_FILTER ? null : allCategory}
+              value={allCategories}
               options={CATEGORIES.map((c) => ({ value: c.match, label: c.label }))}
-              onChange={(v) => setAllCategory(v ?? ALL_FILTER)}
+              onChange={setAllCategories}
             />
             <FilterButton
               icon={<Tags className="h-3.5 w-3.5" aria-hidden="true" />}
               label="Subcategory"
-              value={allSubCategory === ALL_FILTER ? null : allSubCategory}
+              value={allSubCategories}
               options={subcategoryOptions.map((sc) => ({ value: sc, label: sc }))}
-              onChange={(v) => setAllSubCategory(v ?? ALL_FILTER)}
+              onChange={setAllSubCategories}
               disabled={subcategoryOptions.length === 0}
             />
 
-            {(allCategory !== ALL_FILTER || allSubCategory !== ALL_FILTER || allSort !== "name-asc") && (
+            <div className="h-6 w-px bg-slate-200" />
+
+            {/* Export button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportServicesToExcel(allServices)}
+              disabled={allServices.length === 0 || allLoading}
+              className="gap-1.5 rounded-full"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </Button>
+
+            {(allCategories.length > 0 || allSubCategories.length > 0 || allSort !== "name-asc") && (
               <button
                 type="button"
                 onClick={() => {
                   setAllSort("name-asc")
-                  setAllCategory(ALL_FILTER)
-                  setAllSubCategory(ALL_FILTER)
+                  setAllCategories([])
+                  setAllSubCategories([])
                 }}
                 className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
@@ -310,6 +343,45 @@ export function CommunityServicesDirectory() {
               </button>
             )}
           </div>
+
+          {/* Active filter chips */}
+          {(allCategories.length > 0 || allSubCategories.length > 0) && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Active filters:</span>
+              {allCategories.map((cat) => (
+                <span
+                  key={`cat-${cat}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-primary bg-primary/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-primary"
+                >
+                  {CATEGORIES.find((c) => c.match === cat)?.label || cat}
+                  <button
+                    type="button"
+                    onClick={() => setAllCategories((prev) => prev.filter((c) => c !== cat))}
+                    aria-label={`Remove ${cat} filter`}
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              {allSubCategories.map((sc) => (
+                <span
+                  key={`sub-${sc}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-100 py-0.5 pl-2.5 pr-1 text-xs font-medium text-slate-700"
+                >
+                  {sc}
+                  <button
+                    type="button"
+                    onClick={() => setAllSubCategories((prev) => prev.filter((s) => s !== sc))}
+                    aria-label={`Remove ${sc} filter`}
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-slate-200"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
 
           {allLoading && allServices.length === 0 ? (
             <div className="space-y-3">

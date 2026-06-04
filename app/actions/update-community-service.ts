@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 
 export interface UpdateCommunityServiceInput {
+  resource_name?: string | null
   address?: string | null
   phone_number?: string | null
   website?: string | null
