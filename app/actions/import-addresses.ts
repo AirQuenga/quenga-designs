@@ -81,10 +81,7 @@ async function geocodeAddress(address: string): Promise<{
   longitude: number
 } | null> {
   const token = process.env.MAPBOX_TOKEN
-  if (!token) {
-    console.log("No Mapbox token available for geocoding")
-    return null
-  }
+  if (!token) return null
 
   try {
     const encoded = encodeURIComponent(address)
@@ -110,8 +107,7 @@ async function geocodeAddress(address: string): Promise<{
     }
 
     return null
-  } catch (e) {
-    console.log(`Geocoding error for ${address}:`, e)
+  } catch {
     return null
   }
 }
@@ -322,7 +318,6 @@ async function importAddressesToDatabase(addresses: ParsedAddress[]): Promise<{
         failed++
       } else {
         success++
-        console.log(`Imported: ${addr.fullAddress} (all fields populated)`)
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error"

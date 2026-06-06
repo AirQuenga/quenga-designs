@@ -51,7 +51,6 @@ export function MapboxMap({ properties, selectedProperty, onPropertySelect, filt
         setMapToken(trimmedToken)
 
         const mapboxModule = await import("mapbox-gl")
-        // @ts-expect-error - mapbox-gl CSS import is valid at runtime
         await import("mapbox-gl/dist/mapbox-gl.css")
 
         if (cancelled) return

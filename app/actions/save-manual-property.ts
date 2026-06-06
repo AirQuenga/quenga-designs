@@ -1,8 +1,6 @@
 "use server"
 
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+import { createClient } from "@/lib/supabase/server"
 
 interface ManualPropertyData {
   census_tract: string
@@ -54,6 +52,7 @@ export async function saveManualProperty(
   data: ManualPropertyData,
 ): Promise<{ success: boolean; id?: string; error?: string }> {
   try {
+    const supabase = await createClient()
     // Generate a unique APN for manually entered properties
     const timestamp = Date.now()
     const random = Math.floor(Math.random() * 1000)
