@@ -1,9 +1,6 @@
 "use server"
 
-import { createClient } from "@supabase/supabase-js"
-
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || ""
+import { createClient } from "@/lib/supabase/server"
 
 export interface PropertyUpdate {
   id: string
@@ -32,7 +29,7 @@ export interface PropertyUpdate {
 }
 
 export async function updateProperty(update: PropertyUpdate): Promise<{ success: boolean; error?: string }> {
-  const supabase = createClient(supabaseUrl, supabaseKey)
+  const supabase = await createClient()
 
   const { id, ...fields } = update
 
@@ -56,7 +53,7 @@ export async function updateProperty(update: PropertyUpdate): Promise<{ success:
 }
 
 export async function deleteProperty(propertyId: string): Promise<{ success: boolean; error?: string }> {
-  const supabase = createClient(supabaseUrl, supabaseKey)
+  const supabase = await createClient()
 
   const { error } = await supabase.from("properties").delete().eq("id", propertyId)
 

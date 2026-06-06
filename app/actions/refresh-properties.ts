@@ -1,10 +1,7 @@
 "use server"
 
-import { createClient } from "@supabase/supabase-js"
+import { createClient } from "@/lib/supabase/server"
 import { enrichProperty } from "@/lib/enrichProperty"
-
-const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || ""
 
 export interface RefreshResult {
   total: number
@@ -14,7 +11,7 @@ export interface RefreshResult {
 }
 
 export async function refreshAllProperties(): Promise<RefreshResult> {
-  const supabase = createClient(supabaseUrl, supabaseKey)
+  const supabase = await createClient()
   const result: RefreshResult = { total: 0, updated: 0, failed: 0, errors: [] }
 
   // Fetch all properties
@@ -81,7 +78,7 @@ export async function refreshAllProperties(): Promise<RefreshResult> {
 }
 
 export async function refreshSingleProperty(propertyId: string): Promise<{ success: boolean; error?: string }> {
-  const supabase = createClient(supabaseUrl, supabaseKey)
+  const supabase = await createClient()
 
   const { data: property, error: fetchError } = await supabase
     .from("properties")
