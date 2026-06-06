@@ -3,6 +3,12 @@ import * as cheerio from "cheerio"
 import { streamObject } from "ai"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
+import {
+  fetchRawPropertyData,
+  parseAndValidateProperty,
+  upsertScrapedListing,
+  normalizeAddress,
+} from "@/lib/scraper"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -746,7 +752,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ listing })
   }
 
-  // ----- URL fetch -----
+  // ----- URL fetch — enterprise two-step pipeline -----
   if (!url || typeof url !== "string") {
     return NextResponse.json({ error: "Provide a 'url' or paste raw HTML/text as 'html'" }, { status: 400 })
   }
@@ -760,44 +766,82 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Only http(s) URLs are supported" }, { status: 400 })
   }
 
-  let html: string
   try {
-    const res = await fetchWithRetry(url)
-    if (!res.ok) {
-      return NextResponse.json(
-        {
-          error: `Upstream returned ${res.status} ${res.statusText}`,
-          hint: "This site is blocking the scraper. Use the Easy Paste fallback to paste the listing HTML or text directly.",
-        },
-        { status: 502 }
-      )
+    // Step 1: Fetch (stealth Puppeteer → native fallback, proxy-ready)
+    const fetchResult = await fetchRawPropertyData(url)
+
+    // Step 2: Parse + Validate (API intercept → __NEXT_DATA__ → ld+json → regex)
+    const pipelineResult = parseAndValidateProperty(fetchResult)
+
+    if (!pipelineResult.success || !pipelineResult.listing) {
+      // Graceful degradation: fall back to legacy parseHtml on validation failure
+      const parsed = await parseHtml(url, fetchResult.html, useAiFallback)
+      const match = await matchToAtlas(parsed.address, parsed.city)
+      const confidence = calculateConfidence(parsed)
+      const listing: ScrapedListing = {
+        ...parsed,
+        matched_property_id: match?.id ?? null,
+        matched_property_address: match?.address ?? null,
+        confidence,
+      }
+      return NextResponse.json({
+        listing,
+        pipeline: { success: false, validationErrors: pipelineResult.validationErrors, fallback: true },
+      })
     }
-    const contentType = res.headers.get("content-type") || ""
-    if (!contentType.includes("html")) {
-      return NextResponse.json({ error: `Unsupported content-type: ${contentType}` }, { status: 415 })
+
+    const validated = pipelineResult.listing
+
+    // Enrich with atlas match using the normalizeAddress utility
+    const normalizedAddr = normalizeAddress(validated.address)
+    const match = await matchToAtlas(normalizedAddr, validated.city)
+
+    // Build legacy-compatible ScrapedListing shape for the existing UI
+    const listing: ScrapedListing = {
+      source_url: validated.source_url,
+      source_host: validated.source_host,
+      title: validated.title,
+      price: validated.price,
+      available_date: validated.available_date,
+      bedrooms: validated.bedrooms,
+      bathrooms: validated.bathrooms,
+      square_feet: validated.square_feet,
+      address: validated.address,
+      city: validated.city,
+      state: validated.state,
+      zip_code: validated.zip_code,
+      description: validated.description,
+      property_type: validated.property_type,
+      amenities: validated.amenities,
+      pets_allowed: validated.pets_allowed,
+      images: validated.images,
+      matched_property_id: match?.id ?? null,
+      matched_property_address: match?.address ?? null,
+      confidence: Math.round(validated.confidence * 100),
+      extraction_method: validated.extraction_method as ScrapedListing["extraction_method"],
     }
-    html = await res.text()
+
+    // Persist the validated listing to the scraped_listings table
+    await upsertScrapedListing(validated)
+
+    return NextResponse.json({
+      listing,
+      pipeline: {
+        success: true,
+        source_id: validated.source_id,
+        extraction_method: validated.extraction_method,
+        fetch_method: fetchResult.fetchMethod,
+        fallback: false,
+      },
+    })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "fetch failed"
+    const msg = e instanceof Error ? e.message : "pipeline failed"
     return NextResponse.json(
       {
-        error: `Fetch failed: ${msg}`,
-        hint: "This site is blocking the scraper. Use the Easy Paste fallback to paste the listing HTML or text directly.",
+        error: `Scrape pipeline failed: ${msg}`,
+        hint: "Use the Easy Paste fallback to paste the listing HTML or text directly.",
       },
       { status: 502 }
     )
   }
-
-  const parsed = await parseHtml(url, html, useAiFallback)
-  const match = await matchToAtlas(parsed.address, parsed.city)
-  const confidence = calculateConfidence(parsed)
-
-  const listing: ScrapedListing = {
-    ...parsed,
-    matched_property_id: match?.id ?? null,
-    matched_property_address: match?.address ?? null,
-    confidence,
-  }
-
-  return NextResponse.json({ listing })
 }
