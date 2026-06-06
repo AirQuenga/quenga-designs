@@ -50,17 +50,12 @@ export function CopilotChat({ activeFilePath, activeFileContent, branch = "main"
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/copilot",
-      prepareSendMessagesRequest: ({ messages: msgs, id }) => ({
-        body: JSON.stringify({
-          id,
-          messages: msgs,
-          activeFilePath,
-          activeFileContent,
-          branch,
-          model: selectedModel,
-        }),
-        headers: { "Content-Type": "application/json" },
-      }),
+      body: {
+        activeFilePath,
+        activeFileContent,
+        branch,
+        model: selectedModel,
+      },
     }),
   })
 
