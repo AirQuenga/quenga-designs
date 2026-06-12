@@ -199,7 +199,7 @@ export function validateProperty(record: PropertyRecord): ValidationResult {
 
 /** Build a stable fingerprint for a property used in duplicate grouping. */
 export function propertyFingerprint(record: PropertyRecord): string {
-  const addr = record.address ? normalizeAddress(String(record.address)).toLowerCase() : ""
+  const addr = record.address ? (normalizeAddress(String(record.address)) ?? "").toLowerCase() : ""
   const city = (record.city ?? "").toString().trim().toLowerCase()
   const zip = (record.zip_code ?? "").toString().trim()
   return `${addr}|${city}|${zip}`.replace(/\s+/g, " ").trim()

@@ -60,6 +60,42 @@ export default function AdminPage() {
               </div>
             </Link>
 
+            {/* Property Integrity Audit Engine */}
+            <Link
+              href="/admin/audit"
+              className="group relative bg-card border border-border rounded-3xl p-8 transition-all hover:border-muted-foreground/30 hover:shadow-xl cursor-pointer"
+            >
+              <div className="absolute top-8 right-8">
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                  Tri-Factor
+                </span>
+              </div>
+
+              <div className="mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-4">
+                  <Activity className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+                </div>
+              </div>
+
+              <h3 className="text-2xl font-semibold mb-3 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                Integrity Audit Engine
+              </h3>
+
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                Score every listing on completeness, validity, and duplicates. Auto-heal coordinates and addresses,
+                review flagged records, and export reports.
+              </p>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="text-muted-foreground">
+                  Scoring: <span className="font-semibold text-foreground">0–100</span>
+                </div>
+                <div className="text-muted-foreground">
+                  Heal: <span className="font-semibold text-foreground">Mapbox + Zod</span>
+                </div>
+              </div>
+            </Link>
+
             {/* Quenga IDE Workspace */}
             <Link
               href="/admin/workspace"
